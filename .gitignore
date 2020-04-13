@@ -1,0 +1,9 @@
+target
+logs/
+*.png
+*.svg
+node_modules
+dist
+.parcel-cache
+perf.*
+config.toml

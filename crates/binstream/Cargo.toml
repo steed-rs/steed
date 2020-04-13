@@ -1,0 +1,11 @@
+[package]
+name = "binstream"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+byteorder = "1.4.3"
+binstream_derive = { path = "binstream_derive" }
+zerocopy = "0.6.1"
