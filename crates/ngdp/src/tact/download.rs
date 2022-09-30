@@ -1,20 +1,14 @@
-use std::collections::HashSet;
+use std::{collections::HashSet, io::Cursor};
 
-use crate::casc::{blte::decode_blte, idx::Key};
-use binstream::{u16_be, u32_be, u40_be, ByteParse, ByteReader};
+use binrw::BinRead;
 use bitvec::{prelude::Msb0, vec::BitVec};
 
 use super::keys::TactKeys;
+use crate::casc::{blte::decode_blte, idx::Key};
 
 #[derive(Debug)]
 pub struct DownloadManifest {
-    pub signature: [u8; 2],
-    pub version: u8,
-    pub hash_size: u8,
-    pub has_checksum_in_entry: u8,
-    pub number_of_flag_bytes: u8,
     pub base_priority: u8,
-    pub unk: Option<[u8; 3]>,
     pub entries: Vec<Entry>,
     pub tags: Vec<Tag>,
 }
@@ -43,39 +37,45 @@ impl DownloadManifest {
     }
 }
 
-pub fn parse_download_manifest(tact_keys: &TactKeys, content: &[u8]) -> Option<DownloadManifest> {
-    let content = decode_blte(tact_keys, content)?;
-    let r = &mut ByteReader::new(content.as_slice());
+pub fn parse_download_manifest(
+    tact_keys: &TactKeys,
+    content: &[u8],
+) -> Result<DownloadManifest, anyhow::Error> {
+    let content = decode_blte(tact_keys, content)
+        .ok_or_else(|| anyhow::anyhow!("download manifest: couldn't decode blte"))?;
 
-    let signature = r.take_n::<2>()?;
-    let version: u8 = r.parse()?;
-    let hash_size: u8 = r.parse()?;
-    let has_checksum_in_entry: u8 = r.parse()?;
-    let num_entries = r.parse::<u32_be>()?.get();
-    let num_tags = r.parse::<u16_be>()?.get();
-    let number_of_flag_bytes = r.cond::<u8>(version >= 2)?.unwrap_or(0);
-    let base_priority = r.cond::<u8>(version >= 3)?.unwrap_or(0);
-    let unk = r.cond::<[u8; 3]>(version >= 3)?;
+    let res = repr::DownloadManifest::read(&mut Cursor::new(content))?;
+    assert_eq!(16, res.hash_size);
 
-    assert_eq!(b"DL", &signature);
-    assert_eq!(16, hash_size);
-
-    let entries = r.repeat_fn(
-        |r| parse_entry(r, has_checksum_in_entry, number_of_flag_bytes),
-        num_entries as usize,
-    )?;
-    let tags = r.repeat_fn(|r| parse_tag(r, num_entries as usize), num_tags as usize)?;
-
-    Some(DownloadManifest {
-        signature,
-        version,
-        hash_size,
-        has_checksum_in_entry,
-        number_of_flag_bytes,
-        base_priority,
-        unk,
-        entries,
-        tags,
+    let entry_count = res.entry_count as usize;
+    Ok(DownloadManifest {
+        base_priority: res.base_priority.unwrap_or(0),
+        entries: res
+            .entries
+            .into_iter()
+            .map(|e| Entry {
+                key: Key(e.key.try_into().unwrap()),
+                file_size: e.file_size.get(),
+                download_priority: e.download_priority,
+                checksum: e.checksum,
+                flags: e.flags,
+            })
+            .collect(),
+        tags: res
+            .tags
+            .into_iter()
+            .map(|t| Tag {
+                name: t.name.to_string(),
+                type_: t.type_,
+                entries: {
+                    let mut entries = BitVec::from_vec(t.entries);
+                    if entries.len() > entry_count {
+                        entries.drain(entry_count..);
+                    }
+                    entries
+                },
+            })
+            .collect(),
     })
 }
 
@@ -84,27 +84,8 @@ pub struct Entry {
     pub key: Key,
     pub file_size: u64,
     pub download_priority: u8,
-    pub checksum: Option<u32_be>,
+    pub checksum: Option<u32>,
     pub flags: Vec<u8>,
-}
-
-pub fn parse_entry(
-    r: &mut ByteReader,
-    has_checksum_in_entry: u8,
-    number_of_flag_bytes: u8,
-) -> Option<Entry> {
-    let key = Key::parse(r)?;
-    let file_size = r.parse::<u40_be>()?.get();
-    let download_priority: u8 = r.parse()?;
-    let checksum = r.cond::<u32_be>(has_checksum_in_entry != 0)?;
-    let flags = r.take(number_of_flag_bytes as usize)?.to_vec();
-    Some(Entry {
-        key,
-        file_size,
-        download_priority,
-        checksum,
-        flags,
-    })
 }
 
 pub struct Tag {
@@ -122,28 +103,75 @@ impl std::fmt::Debug for Tag {
     }
 }
 
-pub fn parse_tag(r: &mut ByteReader, num_entries: usize) -> Option<Tag> {
-    let name = r.string_zero()?.to_string();
-    let type_ = r.parse::<u16_be>()?.get();
-    let entries = r.take(div_ceil(num_entries, u8::BITS as usize))?.to_vec();
-    let mut entries = BitVec::from_vec(entries);
-    if entries.len() > num_entries {
-        entries.drain(num_entries..);
-    }
-    Some(Tag {
-        name,
-        type_,
-        entries,
-    })
-}
+mod repr {
+    use binrw::{BinRead, NullString};
 
-pub const fn div_ceil(lhs: usize, rhs: usize) -> usize {
-    // TODO: use usize::div_ceil once stable
-    let d = lhs / rhs;
-    let r = lhs % rhs;
-    if r > 0 && rhs > 0 {
-        d + 1
-    } else {
-        d
+    use crate::binrw_ext::u40;
+
+    #[derive(BinRead)]
+    #[br(big, magic = b"DL")]
+    pub struct DownloadManifest {
+        pub signature: [u8; 2],
+        pub version: u8,
+        pub hash_size: u8,
+        pub has_checksum_in_entry: u8,
+        pub entry_count: u32,
+        pub tag_count: u16,
+
+        #[br(if(version >= 2))]
+        pub number_of_flag_bytes: Option<u8>,
+
+        #[br(if(version >= 3))]
+        pub base_priority: Option<u8>,
+
+        #[br(if(version >= 3))]
+        pub _pad: Option<[u8; 3]>,
+
+        #[br(count = entry_count)]
+        pub entries: Vec<Entry>,
+
+        #[br(count = tag_count)]
+        pub tags: Vec<Tag>,
+    }
+
+    #[derive(BinRead)]
+    #[br(big, import(
+        version: u8,
+        hash_size: u8,
+        has_checksum_in_entry: u8,
+        number_of_flag_bytes: Option<u8>
+    ))]
+    pub struct Entry {
+        #[br(count = hash_size)]
+        pub key: Vec<u8>,
+        pub file_size: u40,
+        pub download_priority: u8,
+
+        #[br(if(has_checksum_in_entry != 0))]
+        pub checksum: Option<u32>,
+
+        #[br(if(version >= 2), count = number_of_flag_bytes.unwrap())]
+        pub flags: Vec<u8>,
+    }
+
+    #[derive(BinRead)]
+    #[br(big, import(num_entries: u32))]
+    pub struct Tag {
+        pub name: NullString,
+        pub type_: u16,
+
+        #[br(count = div_ceil(num_entries as usize, u8::BITS as usize))]
+        pub entries: Vec<u8>,
+    }
+
+    pub const fn div_ceil(lhs: usize, rhs: usize) -> usize {
+        // TODO: use usize::div_ceil once stable
+        let d = lhs / rhs;
+        let r = lhs % rhs;
+        if r > 0 && rhs > 0 {
+            d + 1
+        } else {
+            d
+        }
     }
 }

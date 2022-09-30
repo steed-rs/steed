@@ -279,8 +279,7 @@ fn install_inner(
     let download_manifest_data = cdn
         .read_data(&download_manifest_hs.hash)?
         .read_vec(download_manifest_hs.size)?;
-    let download_manifest = parse_download_manifest(&tact_keys, &download_manifest_data)
-        .ok_or_else(|| anyhow!("couldn't parse download manifest"))?;
+    let download_manifest = parse_download_manifest(&tact_keys, &download_manifest_data)?;
 
     // START: Download plan
     let mut total_bytes = 0u64;
