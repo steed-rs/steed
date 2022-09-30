@@ -1,78 +1,52 @@
-use crate::tact::keys::TactKeys;
-use binstream::{u24_be, u32_be, ByteReader};
+use std::io::Cursor;
+use std::io::Read;
+
+use binrw::BinRead;
 use flate2::bufread::ZlibDecoder;
 use libdeflate_sys::{libdeflate_free_decompressor, libdeflate_zlib_decompress};
-use std::fmt::Debug;
-use std::io::Read;
-use zerocopy::{FromBytes, LayoutVerified};
 
-#[derive(FromBytes)]
-struct Header {
-    magic: u32_be,
-    header_size: u32_be,
-}
-
-#[derive(FromBytes)]
-struct SubHeader {
-    _flags: u8,
-    chunk_count: u24_be,
-}
-
-#[derive(Clone, Debug, FromBytes)]
-struct ChunkInfo {
-    compressed_size: u32_be,
-    decompressed_size: u32_be,
-    checksum: [u8; 16],
-}
+use crate::tact::keys::TactKeys;
 
 // TODO: Rewrite as a std::io::Read impl?
-pub fn decode_blte(tact_keys: &TactKeys, content: &[u8]) -> Option<Vec<u8>> {
-    let (header, rest) = LayoutVerified::<_, Header>::new_from_prefix(content)?;
-
-    let magic = header.magic.get().to_be_bytes();
-    if &magic != b"BLTE" {
-        panic!("invalid magic for BLTE: {}", magic.escape_ascii());
-    }
+pub fn decode_blte(tact_keys: &TactKeys, content: &[u8]) -> Result<Vec<u8>, anyhow::Error> {
+    let mut r = Cursor::new(content);
+    let res = repr::BLTEHeader::read(&mut r)?;
 
     // Initialzed before the if to allow for borrowing it, but defer initialization
-    let mut dummy_chunk = [ChunkInfo {
-        compressed_size: u32_be::ZERO,
-        decompressed_size: u32_be::ZERO,
+    let mut dummy_chunk = [repr::ChunkInfo {
+        compressed_size: 0,
+        decompressed_size: 0,
         checksum: [0; 16],
     }];
 
-    let (chunk_infos, rest) = if header.header_size.get() > 0 {
-        let (sub_header, rest) = LayoutVerified::<_, SubHeader>::new_from_prefix(rest)?;
-        let (chunk_infos, rest) = LayoutVerified::<_, [ChunkInfo]>::new_slice_from_prefix(
-            rest,
-            sub_header.chunk_count.get() as usize,
-        )?;
-        (chunk_infos.into_slice(), rest)
+    let chunk_infos = if !res.chunks.is_empty() {
+        res.chunks.as_slice()
     } else {
+        let rest = &content[r.position() as usize..];
         assert_eq!(content.len() - 8, rest.len());
-        dummy_chunk[0].compressed_size = u32_be::new(rest.len() as u32);
+        dummy_chunk[0].compressed_size = rest.len() as u32;
         dummy_chunk[0].checksum = compute_md5(rest);
-        (dummy_chunk.as_slice(), rest)
+        dummy_chunk.as_slice()
     };
 
     let expected_size = chunk_infos
         .iter()
-        .map(|c| c.decompressed_size.get() as usize)
+        .map(|c| c.decompressed_size as usize)
         .sum();
     let mut res = Vec::with_capacity(expected_size);
 
-    let r = &mut ByteReader::new(rest);
     for (index, chunk_info) in chunk_infos.iter().enumerate() {
-        let data = r.take(chunk_info.compressed_size.get() as usize)?;
-        let hash = compute_md5(data);
+        let mut data = vec![0; chunk_info.compressed_size as usize];
+        r.read_exact(&mut data)?;
+        let hash = compute_md5(&data);
         assert_eq!(
             hash, chunk_info.checksum,
             "blte chunk did not match checksum"
         );
-        handle_data_block(data, tact_keys, index, chunk_info, &mut res)?;
+        handle_data_block(&data, tact_keys, index, chunk_info, &mut res)?;
     }
 
-    Some(res)
+    Ok(res)
 }
 
 #[inline(always)]
@@ -88,10 +62,12 @@ fn handle_data_block(
     data: &[u8],
     tact_keys: &TactKeys,
     index: usize,
-    chunk_info: &ChunkInfo,
+    chunk_info: &repr::ChunkInfo,
     out: &mut Vec<u8>,
-) -> Option<()> {
-    let (encoding_mode, data) = data.split_first()?;
+) -> Result<(), anyhow::Error> {
+    let (encoding_mode, data) = data
+        .split_first()
+        .ok_or_else(|| anyhow::anyhow!("blte: Expected at least one byte for block"))?;
     match encoding_mode {
         b'N' => out.extend_from_slice(data),
         b'Z' => handle_deflate_block(data, chunk_info, out),
@@ -101,11 +77,11 @@ fn handle_data_block(
             panic!("Unknown encoding mode: {}", encoding_mode.escape_ascii())
         }
     }
-    Some(())
+    Ok(())
 }
 
-fn handle_deflate_block(data: &[u8], chunk_info: &ChunkInfo, out: &mut Vec<u8>) {
-    let decompressed_size = chunk_info.decompressed_size.get() as usize;
+fn handle_deflate_block(data: &[u8], chunk_info: &repr::ChunkInfo, out: &mut Vec<u8>) {
+    let decompressed_size = chunk_info.decompressed_size as usize;
     if decompressed_size > 0 {
         // If we know the output size, use libdeflate
         zlib_decompress(data, out, decompressed_size).expect("error deflating blte Z chunk");
@@ -123,7 +99,7 @@ fn zlib_decompress(
     in_buf: &[u8],
     out_buf: &mut Vec<u8>,
     decompressed_size: usize,
-) -> Option<usize> {
+) -> Result<usize, anyhow::Error> {
     out_buf.reserve(decompressed_size);
     let out = out_buf.spare_capacity_mut();
 
@@ -153,43 +129,36 @@ fn zlib_decompress(
             }
 
             if out_nbytes != decompressed_size {
-                eprintln!("decompressed unexpected number of bytes in blte Z chunk");
-                None
+                Err(anyhow::anyhow!(
+                    "decompressed unexpected number of bytes in blte Z chunk"
+                ))
             } else {
-                Some(out_nbytes)
+                Ok(out_nbytes)
             }
         }
         libdeflate_sys::libdeflate_result_LIBDEFLATE_BAD_DATA => {
-            eprintln!("bad data in blte Z chunk");
-            None
+            Err(anyhow::anyhow!("bad data in blte Z chunk"))
         }
-        libdeflate_sys::libdeflate_result_LIBDEFLATE_INSUFFICIENT_SPACE => {
-            eprintln!("insufficient space in output buffer for blte Z chunk");
-            None
-        }
+        libdeflate_sys::libdeflate_result_LIBDEFLATE_INSUFFICIENT_SPACE => Err(anyhow::anyhow!(
+            "insufficient space in output buffer for blte Z chunk"
+        )),
         _ => {
             panic!("libdeflate_deflate_decompress returned an unknown error type: this is an internal bug that **must** be fixed");
         }
     }
 }
 
-#[derive(FromBytes)]
-struct EncryptHeader {
-    key_name_length: u8,
-    key_name: [u8; 8],
-    iv_length: u8,
-    iv: [u8; 4],
-    type_: u8,
-}
-
 fn handle_encrypted_block(
     data: &[u8],
     tact_keys: &TactKeys,
     index: usize,
-    chunk_info: &ChunkInfo,
+    chunk_info: &repr::ChunkInfo,
     out: &mut Vec<u8>,
-) -> Option<()> {
-    let (header, data) = LayoutVerified::<_, EncryptHeader>::new_from_prefix(data)?;
+) -> Result<(), anyhow::Error> {
+    let mut r = Cursor::new(data);
+    let header = repr::EncryptHeader::read(&mut r)?;
+    let data = &data[r.position() as usize..];
+
     assert_eq!(8, header.key_name_length);
     assert_eq!(4, header.iv_length);
 
@@ -207,13 +176,13 @@ fn handle_encrypted_block(
 
                 salsa_decrypt(key, full_iv, &mut buf);
             }
-            _ => panic!("Unhandled encryption mode: {}", header.type_.escape_ascii()),
+            _ => anyhow::bail!("Unhandled encryption mode: {}", header.type_.escape_ascii()),
         }
 
         match buf[0] {
             b'N' | b'Z' | b'F' | b'E' => {
-                let chunk_info = ChunkInfo {
-                    compressed_size: u32_be::new(buf.len() as u32),
+                let chunk_info = repr::ChunkInfo {
+                    compressed_size: buf.len() as u32,
                     ..chunk_info.clone()
                 };
                 handle_data_block(&buf, tact_keys, index, &chunk_info, out)?;
@@ -227,7 +196,7 @@ fn handle_encrypted_block(
                 //     header.type_.escape_ascii()
                 // );
                 // eprintln!("decrypted block seemingly corrupt, filling with dummy data");
-                out.extend((0..chunk_info.decompressed_size.get()).map(|_| 0u8));
+                out.extend((0..chunk_info.decompressed_size).map(|_| 0u8));
             }
         }
     } else {
@@ -242,9 +211,9 @@ fn handle_encrypted_block(
         //     "Encryption key name {:02X?} not found, filling with dummy data",
         //     header.key_name
         // );
-        out.extend((0..chunk_info.decompressed_size.get()).map(|_| 0u8));
+        out.extend((0..chunk_info.decompressed_size).map(|_| 0u8));
     }
-    Some(())
+    Ok(())
 }
 
 fn salsa_decrypt(key: [u8; 16], iv: [u8; 8], buf: &mut [u8]) {
@@ -257,7 +226,41 @@ fn salsa_decrypt(key: [u8; 16], iv: [u8; 8], buf: &mut [u8]) {
     // println!("dec: {:02x?}", buf);
 }
 
-#[derive(Debug)]
-pub struct Blte {
-    pub data: Vec<u8>,
+mod repr {
+    use binrw::BinRead;
+
+    use crate::binrw_ext::u24;
+
+    #[derive(BinRead, Debug)]
+    #[br(big, magic = b"BLTE")]
+    pub struct BLTEHeader {
+        pub header_size: u32,
+
+        #[br(if(header_size > 0))]
+        pub flags: Option<u8>,
+
+        #[br(if(header_size > 0))]
+        pub chunk_count: Option<u24>,
+
+        #[br(count = chunk_count.unwrap_or(u24::ZERO).get())]
+        pub chunks: Vec<ChunkInfo>,
+    }
+
+    #[derive(BinRead, Clone, Debug)]
+    #[br(big)]
+    pub struct ChunkInfo {
+        pub compressed_size: u32,
+        pub decompressed_size: u32,
+        pub checksum: [u8; 16],
+    }
+
+    #[derive(BinRead)]
+    #[br(big)]
+    pub struct EncryptHeader {
+        pub key_name_length: u8,
+        pub key_name: [u8; 8],
+        pub iv_length: u8,
+        pub iv: [u8; 4],
+        pub type_: u8,
+    }
 }

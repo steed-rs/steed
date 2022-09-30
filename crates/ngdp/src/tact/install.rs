@@ -63,8 +63,7 @@ pub fn parse_install_manifest(
     tact_keys: &TactKeys,
     content: &[u8],
 ) -> Result<InstallManifest, anyhow::Error> {
-    let content = decode_blte(tact_keys, content)
-        .ok_or_else(|| anyhow::anyhow!("install manifest: couldn't decode blte"))?;
+    let content = decode_blte(tact_keys, content)?;
 
     let res = repr::InstallManifest::read(&mut Cursor::new(content))?;
     assert_eq!(16, res.hash_size);

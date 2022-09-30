@@ -166,8 +166,7 @@ fn install_inner(
         let encoding_data = cdn
             .read_data(&encoding_hs.hash)?
             .read_vec(encoding_hs.size)?;
-        let encoding_data = decode_blte(&tact_keys, &encoding_data)
-            .ok_or_else(|| anyhow!("couldn't blte decode encoding file"))?;
+        let encoding_data = decode_blte(&tact_keys, &encoding_data)?;
         parse_encoding(&encoding_data).context("parsing encoding")?
     };
 
@@ -259,8 +258,7 @@ fn install_inner(
             };
             read_with_bar(&mb, &mut reader, &mut buf, file.size as usize)?;
 
-            let data = decode_blte(&tact_keys, &buf)
-                .ok_or_else(|| anyhow!("couldn't blte decode install file {}", file_name))?;
+            let data = decode_blte(&tact_keys, &buf)?;
             std::fs::write(&path, data)?;
 
             Ok(())

@@ -25,4 +25,3 @@ running-average = "0.1.0"
 rust-salsa20 = "0.3.0"
 serde = { version = "1.0.144", features = ["derive"] }
 thiserror = "1.0.32"
-zerocopy = "0.6.1"

@@ -1,10 +1,33 @@
 use std::io::Cursor;
 
 use binrw::{until_eof, BinRead, BinWrite, VecArgs};
-use binstream::BE;
-use byteorder::ByteOrder;
+use byteorder::{ByteOrder, BE};
 
-#[derive(BinRead, BinWrite, Default)]
+#[derive(BinRead, BinWrite, Default, Clone, Copy)]
+#[allow(non_camel_case_types)]
+pub struct u24([u8; 3]);
+
+macro_rules! defer_fmt {
+    ($type:ty: $getter:ident => $($trait:ident),* ) => {$(
+        impl std::fmt::$trait for $type {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                std::fmt::$trait::fmt(&<$type>::$getter(self), f)
+            }
+        }
+    )*};
+}
+
+defer_fmt!(u24: get => Debug, Display, LowerHex, UpperHex);
+
+impl u24 {
+    pub const ZERO: u24 = u24([0; 3]);
+
+    pub fn get(&self) -> u32 {
+        BE::read_u24(&self.0)
+    }
+}
+
+#[derive(BinRead, BinWrite, Default, Clone, Copy)]
 #[allow(non_camel_case_types)]
 pub struct u40([u8; 5]);
 

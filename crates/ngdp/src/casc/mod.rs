@@ -125,7 +125,7 @@ fn read_file(
 
     let data = &buf[FileHeader::SIZE..header.size as usize];
     assert!(!data.is_empty());
-    decode_blte(tact_keys, data).ok_or_else(|| anyhow!("couldn't blte decode file data"))
+    decode_blte(tact_keys, data)
 }
 
 pub struct CASC {

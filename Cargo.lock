@@ -670,7 +670,6 @@ dependencies = [
  "rust-salsa20",
  "serde",
  "thiserror",
- "zerocopy",
 ]
 
 [[package]]
