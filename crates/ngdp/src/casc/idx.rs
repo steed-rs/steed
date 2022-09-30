@@ -1,5 +1,4 @@
 use binrw::{BinRead, BinWrite};
-use binstream::{ByteParse, ByteReader};
 use byteorder::{ByteOrder, BE, LE};
 use lookup3::hashlittle2;
 use std::collections::BTreeMap;
@@ -228,12 +227,6 @@ impl Default for Indexes {
 
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash, BinRead, BinWrite)]
 pub struct Key(pub [u8; 16]);
-
-impl ByteParse for Key {
-    fn parse(r: &mut ByteReader) -> Option<Self> {
-        r.take_n().map(Key)
-    }
-}
 
 impl Key {
     pub const ZERO: Key = Key([0u8; 16]);
