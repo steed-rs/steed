@@ -208,12 +208,11 @@ fn install_inner(
     let install_manifest_data = cdn
         .read_data(install_manifest_hs.hash)?
         .read_vec(install_manifest_hs.size)?;
-    let install_manifest = parse_install_manifest(&tact_keys, &install_manifest_data)
-        .ok_or_else(|| anyhow!("couldn't parse install manifest"))?;
+    let install_manifest = parse_install_manifest(&tact_keys, &install_manifest_data)?;
 
     let total_bytes: u64 = install_manifest
         .files_with_tags(&state.install_tags)
-        .map(|f| f.size.get() as u64)
+        .map(|f| f.size as u64)
         .sum();
 
     let bar = mb.add(ProgressBar::new(total_bytes));
@@ -225,7 +224,7 @@ fn install_inner(
 
     for file in install_manifest.files_with_tags(&state.install_tags) {
         // TODO: Actual case folding
-        let file_name = file.file_name.0.to_lowercase().replace('\\', "/");
+        let file_name = file.name.to_lowercase().replace('\\', "/");
         bar.set_message(file_name.clone());
 
         if state.installed_files.contains(&file.key.0) {
@@ -244,7 +243,7 @@ fn install_inner(
                 Ok(res == file.key.0)
             }();
             if already_installed.unwrap_or(false) {
-                bar.inc(file.size.get() as u64);
+                bar.inc(file.size as u64);
                 return Ok(());
             }
 
@@ -258,7 +257,7 @@ fn install_inner(
             } else {
                 cdn.read_data(&format!("{:?}", ekey))?
             };
-            read_with_bar(&mb, &mut reader, &mut buf, file.size.get() as usize)?;
+            read_with_bar(&mb, &mut reader, &mut buf, file.size as usize)?;
 
             let data = decode_blte(&tact_keys, &buf)
                 .ok_or_else(|| anyhow!("couldn't blte decode install file {}", file_name))?;
@@ -268,7 +267,7 @@ fn install_inner(
         }()?;
 
         state.installed_files.insert(file.key.0);
-        bar.inc(file.size.get() as u64);
+        bar.inc(file.size as u64);
     }
     bar.finish();
 
