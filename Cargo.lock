@@ -374,32 +374,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "game-files"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "binrw",
- "binstream",
- "bitflags",
- "bitvec",
- "byteorder",
- "flate2",
- "hex",
- "libdeflate-sys",
- "lookup3",
- "md-5",
- "reqwest",
- "ribbit",
- "running-average",
- "rust-salsa20",
- "serde",
- "serde_json",
- "smallvec",
- "thiserror",
- "zerocopy",
-]
-
-[[package]]
 name = "generic-array"
 version = "0.14.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -690,6 +664,32 @@ dependencies = [
  "security-framework",
  "security-framework-sys",
  "tempfile",
+]
+
+[[package]]
+name = "ngdp"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "binrw",
+ "binstream",
+ "bitflags",
+ "bitvec",
+ "byteorder",
+ "flate2",
+ "hex",
+ "libdeflate-sys",
+ "lookup3",
+ "md-5",
+ "reqwest",
+ "ribbit",
+ "running-average",
+ "rust-salsa20",
+ "serde",
+ "serde_json",
+ "smallvec",
+ "thiserror",
+ "zerocopy",
 ]
 
 [[package]]
@@ -1421,9 +1421,9 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "bincode",
- "game-files",
  "indicatif",
  "md-5",
+ "ngdp",
  "reqwest",
  "ribbit",
  "running-average",

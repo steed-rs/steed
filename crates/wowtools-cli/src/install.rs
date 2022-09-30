@@ -1,5 +1,6 @@
 use anyhow::{anyhow, Context};
-use game_files::{
+use indicatif::{HumanBytes, MultiProgress, ProgressBar, ProgressStyle};
+use ngdp::{
     casc::{
         blte::{compute_md5, decode_blte},
         idx::{self, Indexes, Key},
@@ -17,7 +18,6 @@ use game_files::{
     },
     util::{format_hex_bytes, parse_hex_bytes},
 };
-use indicatif::{HumanBytes, MultiProgress, ProgressBar, ProgressStyle};
 use ribbit::{cdns, versions, Server};
 use serde::{Deserialize, Serialize};
 use std::{

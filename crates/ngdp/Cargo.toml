@@ -1,5 +1,5 @@
 [package]
-name = "game-files"
+name = "ngdp"
 version = "0.1.0"
 authors = ["Emil Lauridsen <mine809@gmail.com>"]
 edition = "2021"

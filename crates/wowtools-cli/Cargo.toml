@@ -7,7 +7,7 @@ edition = "2021"
 
 [dependencies]
 anyhow = "1.0.60"
-game-files = { version = "0.1.0", path = "../game-files" }
+ngdp = { version = "0.1.0", path = "../ngdp" }
 reqwest = { version = "0.11.11", features = ["blocking"] }
 ribbit = { version = "0.1.0", path = "../ribbit" }
 serde = { version = "1.0.142", features = ["derive"] }

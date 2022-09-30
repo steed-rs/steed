@@ -1,7 +1,7 @@
 use anyhow::anyhow;
-use game_files::{
+use catalog::{Catalog, CatalogFragment};
+use ngdp::{
     casc::{idx::Key, CASC},
-    catalog::{Catalog, CatalogFragment},
     listfile::{parse_listfile, ListFile},
     tact::{
         cdn::CDNClient,
@@ -15,6 +15,7 @@ use ribbit::{cdns, versions, Server};
 use serde::Deserialize;
 use std::{fs::read_to_string, path::PathBuf, str::FromStr};
 
+mod catalog;
 mod install;
 
 #[derive(Deserialize, Debug, Clone)]
