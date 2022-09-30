@@ -1,5 +1,6 @@
 [package]
 name = "ngdp"
+license = "GPL-3.0-only"
 version = "0.1.0"
 authors = ["Emil Lauridsen <mine809@gmail.com>"]
 edition = "2021"

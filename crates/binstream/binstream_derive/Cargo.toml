@@ -1,5 +1,6 @@
 [package]
 name = "binstream_derive"
+license = "MIT OR Apache-2.0"
 version = "0.1.0"
 authors = ["Emil Lauridsen <mine809@gmail.com>"]
 edition = "2021"
