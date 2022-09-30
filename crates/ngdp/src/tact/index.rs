@@ -1,5 +1,7 @@
-use binstream::{u32_le, ByteParse, ByteReader, BE};
-use std::collections::HashMap;
+use std::{collections::HashMap, io::Cursor};
+
+use binrw::BinRead;
+use byteorder::{ByteOrder, BE};
 
 use crate::casc::idx::Key;
 
@@ -8,74 +10,150 @@ pub struct Index {
     pub entries: HashMap<Key, Entry>,
 }
 
-pub fn parse_index(content: &[u8]) -> Option<Index> {
-    let footer = parse_footer(&content[content.len() - 28..])?;
-
-    let block_size = 1024 * footer.block_size_kb as usize;
-    let record_size = footer.key_size_in_bytes as usize
-        + footer.size_bytes as usize
-        + footer.offset_bytes as usize;
-
-    let mut entries = HashMap::new();
-    for record in content
-        .chunks_exact(block_size)
-        .flat_map(|b| b.chunks_exact(record_size))
-        .take(footer.num_elements.get() as usize)
-    {
-        let r = &mut ByteReader::new(record);
-
-        let key = Key::parse(r)?;
-        let size = r.uint::<BE>(footer.size_bytes as usize)?;
-        let offset = r.uint::<BE>(footer.offset_bytes as usize)?;
-
-        assert_ne!(key, Key::ZERO);
-        assert!(!entries.contains_key(&key));
-
-        let entry = Entry { size, offset };
-        entries.insert(key, entry);
-    }
-    assert_eq!(footer.num_elements.get() as usize, entries.len());
-
-    Some(Index { entries })
-}
-
 #[derive(Debug, Clone)]
 pub struct Entry {
     pub size: u64,
     pub offset: u64,
 }
 
-#[derive(ByteParse, Debug)]
-pub struct Footer {
-    pub _toc_hash: [u8; 8],
-    pub version: u8,
-    pub unk0: u8,
-    pub unk1: u8,
-    pub block_size_kb: u8,
-    pub offset_bytes: u8,
-    pub size_bytes: u8,
-    pub key_size_in_bytes: u8,
-    pub checksum_size: u8,
-    pub num_elements: u32_le,
-}
+pub fn parse_index(content: &[u8]) -> Result<Index, anyhow::Error> {
+    let res = repr::Index::read(&mut Cursor::new(content))?;
+    assert_eq!(res.footer.key_size_in_bytes, 16);
 
-fn parse_footer(content: &[u8]) -> Option<Footer> {
-    let r = &mut ByteReader::new(content);
+    let mut entries = HashMap::new();
+    for block in res.blocks {
+        'block: for entry in block.entries.0 {
+            let key = Key(entry.ekey.try_into().unwrap());
+            if key == Key::ZERO {
+                // We've reached zero padding, block is done
+                break 'block;
+            }
 
-    let mut res = Footer::parse(r)?;
-    assert_eq!(res.version, 1);
-    assert_eq!(res.unk0, 0);
-    assert_eq!(res.unk1, 0);
-    assert_eq!(res.checksum_size, 8);
-    assert_eq!(res.key_size_in_bytes, 16);
+            let size = BE::read_uint(&entry.size, res.footer.size_bytes as usize);
+            let offset = BE::read_uint(&entry.offset, res.footer.offset_bytes as usize);
 
-    // TODO: avoid the extra conversions
-    if res.num_elements.get() & 0xff000000 != 0 {
-        // num_elements is BE in old versions, we've likely hit that.
-        // swap the bytes to reintrepret.
-        res.num_elements.set(res.num_elements.get().swap_bytes());
+            assert!(!entries.contains_key(&key));
+
+            let entry = Entry { size, offset };
+            entries.insert(key, entry);
+        }
     }
 
-    let _footer_checksum = r.take(res.checksum_size as usize)?;
-    Some(res)
+    assert_eq!(res.footer.num_elements as usize, entries.len());
+
+    Ok(Index { entries })
+}
+
+mod repr {
+    use std::io::SeekFrom;
+
+    use binrw::BinRead;
+
+    use crate::binrw_ext::Block;
+
+    #[derive(BinRead)]
+    #[br(little)]
+    pub struct Index {
+        // TODO: Match agent behaviour, trying with multiple toc_hash_sizes
+        #[br(seek_before = SeekFrom::End(-28))]
+        pub footer: Footer,
+
+        #[br(seek_before = SeekFrom::Start(0), args {
+            count: num_blocks(&footer),
+            inner: (footer.block_size_kb, footer.key_size_in_bytes, footer.size_bytes, footer.offset_bytes),
+        })]
+        pub blocks: Vec<IndexBlock>,
+
+        pub toc: TableOfContents,
+    }
+
+    #[derive(BinRead, Debug)]
+    #[br(little)]
+    pub struct Footer {
+        pub toc_hash: [u8; 8],
+        pub version: u8,
+        pub unk0: u8,
+        pub unk1: u8,
+        pub block_size_kb: u8,
+        pub offset_bytes: u8,
+        pub size_bytes: u8,
+        pub key_size_in_bytes: u8,
+        pub checksum_size: u8,
+        pub num_elements: u32,
+        pub footer_checksum: [u8; 8],
+    }
+
+    #[derive(BinRead)]
+    #[br(import(block_size_kb: u8, key_size_in_bytes: u8, size_bytes: u8, offset_bytes: u8))]
+    pub struct IndexBlock {
+        #[br(args {
+            count: block_size_kb as usize * 1024,
+            inner: (key_size_in_bytes, size_bytes, offset_bytes),
+        })]
+        pub entries: Block<IndexEntry>,
+    }
+
+    #[derive(BinRead)]
+    #[br(import(key_size_in_bytes: u8, size_bytes: u8, offset_bytes: u8))]
+    pub struct IndexEntry {
+        #[br(count = key_size_in_bytes)]
+        pub ekey: Vec<u8>,
+
+        #[br(count = size_bytes)]
+        pub size: Vec<u8>,
+
+        #[br(count = offset_bytes)]
+        pub offset: Vec<u8>,
+    }
+
+    impl std::fmt::Debug for IndexEntry {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            f.debug_struct("IndexEntry")
+                .field("ekey", &format_args!("{:x?}", self.ekey))
+                .field("size", &format_args!("{:x?}", self.size))
+                .field("offset", &format_args!("{:x?}", self.offset))
+                .finish()
+        }
+    }
+
+    #[derive(BinRead)]
+    #[br(import(num_blocks: usize, key_size_in_bytes: u8, checksum_size: u8))]
+    pub struct TableOfContents {
+        #[br(args { count: num_blocks, inner: (key_size_in_bytes,) })]
+        pub entries: Vec<TOCEntry>,
+        #[br(args { count: num_blocks, inner: (checksum_size,) })]
+        pub blocks_hash: Vec<TOCBlockHash>,
+    }
+
+    #[derive(BinRead)]
+    #[br(import(key_size_in_bytes: u8))]
+    pub struct TOCEntry {
+        #[br(count = key_size_in_bytes)]
+        pub last_ekey: Vec<u8>,
+    }
+
+    #[derive(BinRead)]
+    #[br(import(checksum_size: u8))]
+    pub struct TOCBlockHash {
+        #[br(count = checksum_size)]
+        pub lower_part_of_md5_of_block: Vec<u8>,
+    }
+
+    const fn num_blocks(footer: &Footer) -> usize {
+        let block_size = (footer.block_size_kb as usize) * 1024;
+        let elements_per_block = block_size
+            / (footer.key_size_in_bytes + footer.size_bytes + footer.offset_bytes) as usize;
+        div_ceil(footer.num_elements as usize, elements_per_block)
+    }
+
+    const fn div_ceil(lhs: usize, rhs: usize) -> usize {
+        // TODO: use usize::div_ceil once stable
+        let d = lhs / rhs;
+        let r = lhs % rhs;
+        if r > 0 && rhs > 0 {
+            d + 1
+        } else {
+            d
+        }
+    }
 }

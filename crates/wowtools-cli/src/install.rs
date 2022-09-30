@@ -187,7 +187,7 @@ fn install_inner(
         .zip(cdn_config.archives_index_size)
     {
         let index_data = builder.read_archive_index(&cdn, archive, index_size)?;
-        let index = parse_index(&index_data).ok_or_else(|| anyhow!("couldn't parse index"))?;
+        let index = parse_index(&index_data)?;
 
         let size: u64 = index.entries.values().map(|e| e.size).sum();
         archive_sizes.insert(*archive, size);
