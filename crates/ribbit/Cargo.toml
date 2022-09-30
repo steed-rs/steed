@@ -9,4 +9,4 @@ edition = "2021"
 
 [dependencies]
 anyhow = "1.0.56"
-mailparse = "0.13.8"
+mail-parser = "0.6.1"

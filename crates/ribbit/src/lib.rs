@@ -1,8 +1,9 @@
-use mailparse::{parse_mail, MailHeaderMap};
 use std::{
     io::{Read, Write},
     net::TcpStream,
 };
+
+use mail_parser::Message;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Server {
@@ -44,14 +45,20 @@ pub fn execute_ribbit_command(server: Server, command: Command) -> Result<Vec<u8
 }
 
 fn get_body_with_content_disposition(res: &[u8], content_disposition: &str) -> Option<String> {
-    let parsed = parse_mail(res).unwrap();
-    let summary = parsed.subparts.iter().find(|part| {
-        part.get_headers()
-            .get_first_header("Content-Disposition")
-            .map(|v| v.get_value() == content_disposition)
+    let parsed = Message::parse(res).unwrap();
+    let summary = parsed.parts.iter().find(|part| {
+        part.headers()
+            .iter()
+            .find(|h| h.name() == "Content-Disposition")
+            .map(|v| {
+                v.value()
+                    .as_content_type_ref()
+                    .map(|c| c.get_type() == content_disposition)
+                    .is_some()
+            })
             .unwrap_or(false)
     })?;
-    summary.get_body().ok()
+    summary.get_text_contents().map(|s| s.to_string())
 }
 
 #[derive(Debug, Clone)]
