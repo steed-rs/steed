@@ -174,7 +174,7 @@ impl CASC {
             let key = Key::from_hex(&decoded_encoding_hashsize.hash);
             let entry = indexes.lookup(&key).unwrap();
             let file = read_file(&data_path, entry, &tact_keys)?;
-            parse_encoding(&file).ok_or_else(|| anyhow!("couldn't parse encoding"))?
+            parse_encoding(&file)?
         };
 
         Ok(CASC {

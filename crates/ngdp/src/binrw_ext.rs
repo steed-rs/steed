@@ -1,4 +1,6 @@
-use binrw::{BinRead, BinWrite};
+use std::io::Cursor;
+
+use binrw::{until_eof, BinRead, BinWrite, VecArgs};
 use binstream::BE;
 use byteorder::ByteOrder;
 
@@ -44,5 +46,21 @@ impl u40 {
         let mut res = [0u8; 5];
         BE::write_uint(&mut res, val, 5);
         Some(u40(res))
+    }
+}
+
+pub struct Block<T>(pub Vec<T>);
+
+impl<T: BinRead> BinRead for Block<T> {
+    type Args = VecArgs<T::Args>;
+
+    fn read_options<R: std::io::Read + std::io::Seek>(
+        reader: &mut R,
+        options: &binrw::ReadOptions,
+        args: Self::Args,
+    ) -> binrw::BinResult<Self> {
+        let mut buf = vec![0; args.count];
+        reader.read_exact(&mut buf)?;
+        until_eof(&mut Cursor::new(buf), options, args.inner).map(Block)
     }
 }
