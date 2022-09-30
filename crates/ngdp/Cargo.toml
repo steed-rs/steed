@@ -8,22 +8,20 @@ edition = "2021"
 
 [dependencies]
 anyhow = { version = "1.0.56", features = ["backtrace"] }
+binrw = "0.10.0"
+binstream = { version = "0.1.0", path = "../binstream" }
 bitflags = "1.2"
 bitvec = "1.0.0"
 byteorder = "1.4.3"
 flate2 = "1.0.22"
 hex = "0.4.3"
+libdeflate-sys = "0.11.0"
 lookup3 = { path = "../lookup3" }
-smallvec = "1.8.0"
-ribbit = { version = "0.1.0", path = "../ribbit" }
-thiserror = "1.0.32"
-rust-salsa20 = "0.3.0"
 md-5 = "0.10.5"
 reqwest = { version = "0.11.11", features = ["blocking"] }
-binstream = { version = "0.1.0", path = "../binstream" }
-zerocopy = "0.6.1"
-libdeflate-sys = "0.10.0"
-serde_json = "1.0.85"
-serde = { version = "1.0.144", features = ["derive"] }
-binrw = "0.10.0"
+ribbit = { version = "0.1.0", path = "../ribbit" }
 running-average = "0.1.0"
+rust-salsa20 = "0.3.0"
+serde = { version = "1.0.144", features = ["derive"] }
+thiserror = "1.0.32"
+zerocopy = "0.6.1"
