@@ -1,7 +1,9 @@
-use binstream::{i32_le, u32_le, u64_le, ByteParse, ByteReader};
-use lookup3::hashlittle2;
 use std::collections::HashMap;
 use std::fmt::Debug;
+use std::io::Cursor;
+
+use binrw::BinRead;
+use lookup3::hashlittle2;
 
 use crate::casc::idx::Key;
 
@@ -17,7 +19,7 @@ pub struct Root {
 
 impl Root {
     // TODO: Construct this in a streaming manner if memory becomes an issue
-    fn new(total_file_count: u32, named_file_count: u32, blocks: Vec<RootBlock>) -> Root {
+    fn new(total_file_count: u32, named_file_count: u32, blocks: Vec<repr::Block>) -> Root {
         let mut record_types = vec![];
         let mut record_types_by_file_data_id: HashMap<i32, Vec<u32>> = HashMap::new();
         let mut record_types_by_name_hash: HashMap<u64, Vec<u32>> = HashMap::new();
@@ -28,12 +30,12 @@ impl Root {
             let mut file_data_id_by_name_hash = HashMap::new();
 
             let mut file_data_id = -1;
-            for (i, record) in block.records.into_iter().enumerate() {
-                file_data_id += block.file_data_id_deltas[i].get() + 1;
+            for (i, content_key) in block.content_keys.into_iter().enumerate() {
+                file_data_id += block.file_data_id_deltas[i] + 1;
 
                 let record = Record {
-                    content_key: record.content_key,
-                    name_hash: record.name_hash,
+                    content_key: content_key,
+                    name_hash: block.name_hashes.get(i).copied(),
                 };
 
                 record_types_by_file_data_id
@@ -70,8 +72,8 @@ impl Root {
             }
 
             record_types.push(RecordType {
-                content_flags: block.content_flags,
-                locale_flags: block.locale_flags,
+                content_flags: block.flags,
+                locale_flags: block.locale,
                 records_by_file_data_id,
                 file_data_id_by_name_hash,
             });
@@ -139,90 +141,13 @@ pub struct Record {
     pub name_hash: Option<u64>,
 }
 
-pub fn parse_root(content: &[u8]) -> Option<Root> {
-    let r = &mut ByteReader::new(content);
-
-    let magic = r.parse::<u32_le>()?.get();
-    assert_eq!(b"MFST", &magic.to_be_bytes());
-
-    let total_file_count = r.parse::<u32_le>()?.get();
-    let named_file_count = r.parse::<u32_le>()?.get();
-
-    let allow_non_named_files = total_file_count != named_file_count;
-    let use_old_record_format = &magic.to_be_bytes() != b"MFST";
-
-    let blocks =
-        r.many1_fn(|r| parse_root_block(allow_non_named_files, use_old_record_format, r))?;
-    Some(Root::new(total_file_count, named_file_count, blocks))
-}
-
-struct RootBlock {
-    pub content_flags: ContentFlags,
-    pub locale_flags: LocaleFlags,
-    pub file_data_id_deltas: Vec<i32_le>,
-    pub records: Vec<CASRecord>,
-}
-
-fn parse_root_block(
-    allow_non_named_files: bool,
-    use_old_record_format: bool,
-    r: &mut ByteReader,
-) -> Option<RootBlock> {
-    let num_records = r.parse::<u32_le>()?.get();
-
-    let content_flags = r.parse::<u32_le>()?.get();
-    let content_flags = ContentFlags::from_bits(content_flags).expect("invalid content flags");
-
-    let locale_flags = r.parse::<u32_le>()?.get();
-    let locale_flags = LocaleFlags::from_bits(locale_flags).expect("invalid locale flags");
-
-    let file_data_id_deltas = r.repeat::<i32_le>(num_records as usize)?;
-
-    let records = if use_old_record_format {
-        r.repeat::<CASRecord>(num_records as usize)?
-    } else {
-        let content_keys = r.repeat::<Key>(num_records as usize)?;
-        let name_hashes =
-            if !allow_non_named_files || !content_flags.contains(ContentFlags::NO_NAME_HASH) {
-                Some(r.repeat::<u64_le>(num_records as usize)?)
-            } else {
-                None
-            };
-
-        content_keys
-            .into_iter()
-            .enumerate()
-            .map(|(i, content_key)| CASRecord {
-                content_key,
-                name_hash: name_hashes
-                    .as_ref()
-                    .and_then(|n| n.get(i).copied().map(u64_le::get)),
-            })
-            .collect()
-    };
-
-    Some(RootBlock {
-        content_flags,
-        locale_flags,
-        file_data_id_deltas,
-        records,
-    })
-}
-
-struct CASRecord {
-    content_key: Key,
-    name_hash: Option<u64>,
-}
-
-impl ByteParse for CASRecord {
-    fn parse(r: &mut ByteReader) -> Option<Self> {
-        let content_key = Key::parse(r)?;
-        let name_hash = r.parse::<u64_le>()?.get();
-        Some(CASRecord {
-            content_key,
-            name_hash: Some(name_hash),
-        })
-    }
+pub fn parse_root(content: &[u8]) -> Result<Root, anyhow::Error> {
+    let res = repr::Root::read(&mut Cursor::new(content))?;
+    Ok(Root::new(
+        res.total_file_count,
+        res.named_file_count,
+        res.blocks,
+    ))
 }
 
 bitflags::bitflags! {
@@ -266,5 +191,45 @@ bitflags::bitflags! {
         const UNCOMMON_RESOLUTION = 0x20000000;            // denotes non-1280px wide cinematics
         const BUNDLE              = 0x40000000;
         const NO_COMPRESSION      = 0x80000000;
+    }
+}
+
+// TODO: Support pre 8.2 representation
+mod repr {
+    use binrw::{until_eof, BinRead};
+
+    use crate::casc::idx::Key;
+
+    use super::{ContentFlags, LocaleFlags};
+
+    #[derive(BinRead)]
+    #[br(little, magic = b"TSFM")]
+    pub struct Root {
+        pub total_file_count: u32,
+        pub named_file_count: u32,
+
+        #[br(parse_with = until_eof, args(total_file_count != named_file_count))]
+        pub blocks: Vec<Block>,
+    }
+
+    #[derive(BinRead)]
+    #[br(little, import(allow_non_named_files: bool))]
+    pub struct Block {
+        pub num_records: u32,
+
+        #[br(try_map = |x| ContentFlags::from_bits(x).ok_or_else(|| anyhow::anyhow!("ContentFlags: invalid bits")))]
+        pub flags: ContentFlags,
+
+        #[br(try_map = |x| LocaleFlags::from_bits(x).ok_or_else(|| anyhow::anyhow!("LocaleFlags: invalid bits")))]
+        pub locale: LocaleFlags,
+
+        #[br(count = num_records)]
+        pub file_data_id_deltas: Vec<i32>,
+
+        #[br(count = num_records)]
+        pub content_keys: Vec<Key>,
+
+        #[br(if(!(allow_non_named_files && flags.contains(ContentFlags::NO_NAME_HASH))), count = num_records)]
+        pub name_hashes: Vec<u64>,
     }
 }

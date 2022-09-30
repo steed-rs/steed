@@ -85,7 +85,7 @@ fn do_stuff(config: &Config) -> Result<(), anyhow::Error> {
         let root = {
             let ckey = Key::from_hex(build_config.root);
             let file = casc.read_by_ckey(&ckey)?;
-            parse_root(&file).ok_or_else(|| anyhow!("couldn't parse root"))?
+            parse_root(&file)?
         };
 
         let listfile = {
