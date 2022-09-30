@@ -10,7 +10,6 @@ edition = "2021"
 [dependencies]
 anyhow = { version = "1.0.56", features = ["backtrace"] }
 binrw = "0.10.0"
-binstream = { version = "0.1.0", path = "../binstream" }
 bitflags = "1.2"
 bitvec = "1.0.0"
 byteorder = "1.4.3"
