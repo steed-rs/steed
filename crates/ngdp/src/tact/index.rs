@@ -3,11 +3,11 @@ use std::{collections::HashMap, io::Cursor};
 use binrw::BinRead;
 use byteorder::{ByteOrder, BE};
 
-use crate::casc::idx::Key;
+use super::EncodingKey;
 
 #[derive(Debug)]
 pub struct Index {
-    pub entries: HashMap<Key, Entry>,
+    pub entries: HashMap<EncodingKey, Entry>,
 }
 
 #[derive(Debug, Clone)]
@@ -23,8 +23,8 @@ pub fn parse_index(content: &[u8]) -> Result<Index, anyhow::Error> {
     let mut entries = HashMap::new();
     for block in res.blocks {
         'block: for entry in block.entries.0 {
-            let key = Key(entry.ekey.try_into().unwrap());
-            if key == Key::ZERO {
+            let key = EncodingKey::from_slice(&entry.ekey);
+            if key == EncodingKey::ZERO {
                 // We've reached zero padding, block is done
                 break 'block;
             }

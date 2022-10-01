@@ -1,27 +1,27 @@
 use binrw::BinRead;
 use std::io::Cursor;
 
-use crate::casc::idx::Key;
+use super::ContentKey;
 
 pub struct Encoding {
     pub hash_size_ckey: u8,
     pub hash_size_ekey: u8,
     pub especs: Vec<String>,
-    pub cekey_page_headers: Vec<repr::PageHeader>,
+    pub cekey_page_headers: Vec<repr::CEKeyPageHeader>,
     pub cekey_pages: Vec<repr::CEKeyPage>,
-    pub ekey_spec_page_headers: Vec<repr::PageHeader>,
+    pub ekey_spec_page_headers: Vec<repr::EKeySpecPageHeader>,
     pub ekey_spec_pages: Vec<repr::EKeySpecPage>,
 }
 
 impl Encoding {
-    pub fn lookup_by_ckey(&self, ckey: &Key) -> Option<&repr::CEKeyEntry> {
-        let ckey = ckey.as_slice();
-        assert_eq!(self.hash_size_ckey as usize, ckey.len());
+    pub fn lookup_by_ckey(&self, ckey: &ContentKey) -> Option<&repr::CEKeyEntry> {
+        // TODO: Avoid turning it into a slice
+        assert_eq!(self.hash_size_ckey as usize, 16);
 
         let mut page_idx = 0;
-        let mut prev_first_key = self.cekey_page_headers[0].first_key.as_slice();
+        let mut prev_first_key = &self.cekey_page_headers[0].first_key;
         for (i, page_header) in self.cekey_page_headers.iter().enumerate().skip(1) {
-            let next_first_key = page_header.first_key.as_slice();
+            let next_first_key = &page_header.first_key;
             if ckey >= prev_first_key && ckey <= next_first_key {
                 break;
             } else {
@@ -34,7 +34,7 @@ impl Encoding {
             .entries
             .0
             .iter()
-            .find(|entry| entry.ckey.as_slice() == ckey)
+            .find(|entry| entry.ckey == *ckey)
     }
 
     fn _lookup_by_ekey(&self, ekey: &[u8]) -> Option<&repr::CEKeyEntry> {
@@ -107,7 +107,7 @@ mod repr {
 
     use crate::{
         binrw_ext::{u40, Block},
-        casc::idx::Key,
+        tact::{ContentKey, EncodingKey},
     };
 
     #[derive(BinRead)]
@@ -127,7 +127,7 @@ mod repr {
         pub espec_block: Block<NullString>,
 
         #[br(count = cekey_page_table_count)]
-        pub cekey_page_headers: Vec<PageHeader>,
+        pub cekey_page_headers: Vec<CEKeyPageHeader>,
 
         #[br(args {
             count: cekey_page_table_count as usize,
@@ -136,7 +136,7 @@ mod repr {
         pub cekey_pages: Vec<CEKeyPage>,
 
         #[br(count = ekey_spec_page_table_count)]
-        pub ekey_spec_page_headers: Vec<PageHeader>,
+        pub ekey_spec_page_headers: Vec<EKeySpecPageHeader>,
 
         #[br(args {
             count: ekey_spec_page_table_count as usize,
@@ -146,8 +146,8 @@ mod repr {
     }
 
     #[derive(BinRead)]
-    pub struct PageHeader {
-        pub first_key: Key,
+    pub struct CEKeyPageHeader {
+        pub first_key: ContentKey,
         pub page_md5: [u8; 16],
     }
 
@@ -163,9 +163,15 @@ mod repr {
     pub struct CEKeyEntry {
         pub key_count: u8,
         pub file_size: u40,
-        pub ckey: Key,
+        pub ckey: ContentKey,
         #[br(count = key_count)]
-        pub ekeys: Vec<Key>,
+        pub ekeys: Vec<EncodingKey>,
+    }
+
+    #[derive(BinRead)]
+    pub struct EKeySpecPageHeader {
+        pub first_key: EncodingKey,
+        pub page_md5: [u8; 16],
     }
 
     #[derive(BinRead)]
@@ -178,7 +184,7 @@ mod repr {
     #[derive(BinRead, Debug)]
     #[br(big)]
     pub struct EKeySpecEntry {
-        pub ekey: Key,
+        pub ekey: EncodingKey,
         pub espec_index: u32,
         pub file_size: u40,
     }

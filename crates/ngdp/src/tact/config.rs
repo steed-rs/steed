@@ -1,4 +1,6 @@
-use std::{collections::HashMap, iter::FromIterator};
+use std::{collections::HashMap, fmt::Debug, iter::FromIterator, str::FromStr};
+
+use super::{ContentKey, EncodingKey};
 
 fn parse_rough(config: &str) -> HashMap<&str, &str> {
     let mut res = HashMap::new();
@@ -18,19 +20,20 @@ fn parse_rough(config: &str) -> HashMap<&str, &str> {
 
 #[derive(Debug)]
 pub struct BuildConfig<'a> {
-    pub root: &'a str,
-    pub install: Option<EncodedPair<HashSize<'a>>>,
-    pub download: Option<EncodedPair<HashSize<'a>>>,
-    pub size: Option<EncodedPair<HashSize<'a>>>,
+    // TODO: Type the keys?
+    pub root: ContentKey,
+    pub install: Option<EncodedPair>,
+    pub download: Option<EncodedPair>,
+    pub size: Option<EncodedPair>,
     /// Optional
-    pub build_partial_priority: Vec<HashSize<'a>>,
+    pub build_partial_priority: Vec<HashSize<ContentKey>>,
     /// Optional
-    pub partial_priority: Vec<&'a str>,
+    pub partial_priority: Vec<ContentKey>,
     /// Not really understood, always zero if present, present if partial_priority is present
     pub partial_priority_size: Option<&'a str>,
-    pub encoding: Option<EncodedPair<HashSize<'a>>>,
-    pub patch: Option<HashSize<'a>>,
-    pub patch_config: Option<&'a str>,
+    pub encoding: Option<EncodedPair>,
+    pub patch: Option<HashSize<EncodingKey>>,
+    pub patch_config: Option<ContentKey>,
     pub build_attributes: Option<&'a str>,
     pub build_branch: Option<&'a str>,
     pub build_comments: Option<&'a str>,
@@ -44,7 +47,7 @@ pub struct BuildConfig<'a> {
     pub build_uid: Option<&'a str>,
 }
 
-pub fn parse_build_config(input: &str) -> BuildConfig {
+pub fn parse_build_config(input: &str) -> Result<BuildConfig, anyhow::Error> {
     let rough = parse_rough(input);
 
     let build_partial_priority = rough
@@ -60,11 +63,14 @@ pub fn parse_build_config(input: &str) -> BuildConfig {
         });
 
     let partial_priority = rough
-        .get("size")
-        .map_or_else(Vec::new, |v| Vec::from_iter(v.split_ascii_whitespace()));
+        .get("partial-priority")
+        .iter()
+        .flat_map(|v| v.split_ascii_whitespace())
+        .map(|s| s.parse())
+        .collect::<Result<_, _>>()?;
 
-    BuildConfig {
-        root: rough["root"],
+    Ok(BuildConfig {
+        root: rough["root"].parse()?,
         install: parse_pair_hashkey(
             rough.get("install").copied(),
             rough.get("install-size").copied(),
@@ -85,7 +91,7 @@ pub fn parse_build_config(input: &str) -> BuildConfig {
             rough.get("patch").copied(),
             rough.get("patch-size").copied(),
         ),
-        patch_config: rough.get("patch-config").copied(),
+        patch_config: rough.get("patch-config").map(|s| s.parse()).transpose()?,
         build_attributes: rough.get("build-attributes").copied(),
         build_branch: rough.get("build-branch").copied(),
         build_comments: rough.get("build-comments").copied(),
@@ -97,19 +103,19 @@ pub fn parse_build_config(input: &str) -> BuildConfig {
         build_product: rough.get("build-product").copied(),
         build_t1_manifest_version: rough.get("build-t1-manifest-version").copied(),
         build_uid: rough.get("build-uid").copied(),
-    }
+    })
 }
 
 #[derive(Debug)]
 pub struct CDNConfig<'a> {
-    pub archives: Vec<&'a str>,
+    pub archives: Vec<EncodingKey>,
     pub archives_index_size: Vec<usize>,
-    pub archive_group: Option<&'a str>,
-    pub file_index: HashSize<'a>,
-    pub patch_archives: Vec<&'a str>,
+    pub archive_group: Option<EncodingKey>,
+    pub file_index: HashSize<EncodingKey>,
+    pub patch_archives: Vec<EncodingKey>,
     pub patch_archives_index_size: Vec<usize>,
-    pub patch_archive_group: Option<&'a str>,
-    pub patch_file_index: Option<HashSize<'a>>,
+    pub patch_archive_group: Option<EncodingKey>,
+    pub patch_file_index: Option<HashSize<EncodingKey>>,
     pub builds: Vec<&'a str>,
 }
 
@@ -121,6 +127,7 @@ pub fn parse_cdn_config(input: &str) -> CDNConfig {
         .get("archives")
         .iter()
         .flat_map(|v| v.split(' '))
+        .map(|s| s.parse().unwrap())
         .collect();
 
     let archives_index_size = rough
@@ -134,6 +141,7 @@ pub fn parse_cdn_config(input: &str) -> CDNConfig {
         .get("patch-archives")
         .iter()
         .flat_map(|v| v.split(' '))
+        .map(|s| s.parse().unwrap())
         .collect();
 
     let patch_archives_index_size = rough
@@ -150,7 +158,7 @@ pub fn parse_cdn_config(input: &str) -> CDNConfig {
     CDNConfig {
         archives,
         archives_index_size,
-        archive_group: rough.get("archive-group").copied(),
+        archive_group: rough.get("archive-group").and_then(|s| s.parse().ok()),
         file_index: parse_hashsize(
             rough.get("file-index").copied(),
             rough.get("file-index-size").copied(),
@@ -158,7 +166,9 @@ pub fn parse_cdn_config(input: &str) -> CDNConfig {
         .expect("missing file-index from cdn-config"),
         patch_archives,
         patch_archives_index_size,
-        patch_archive_group: rough.get("patch-archive-group").copied(),
+        patch_archive_group: rough
+            .get("patch-archive-group")
+            .and_then(|s| s.parse().ok()),
         patch_file_index: parse_hashsize(
             rough.get("patch-file-index").copied(),
             rough.get("patch-file-index-size").copied(),
@@ -168,21 +178,18 @@ pub fn parse_cdn_config(input: &str) -> CDNConfig {
 }
 
 #[derive(Debug)]
-pub struct EncodedPair<T> {
-    pub decoded: T,
-    pub encoded: Option<T>,
+pub struct EncodedPair {
+    pub decoded: HashSize<ContentKey>,
+    pub encoded: Option<HashSize<EncodingKey>>,
 }
 
 #[derive(Debug, Clone, Copy)]
-pub struct HashSize<'a> {
-    pub hash: &'a str,
+pub struct HashSize<T: FromStr> {
+    pub hash: T,
     pub size: usize,
 }
 
-fn parse_pair_hashkey<'a>(
-    hash: Option<&'a str>,
-    size: Option<&'a str>,
-) -> Option<EncodedPair<HashSize<'a>>> {
+fn parse_pair_hashkey(hash: Option<&str>, size: Option<&str>) -> Option<EncodedPair> {
     let (hash, size) = (hash?, size?);
     let (decoded_hash, encoded_hash) = hash.split_once(' ').unwrap_or((hash, ""));
     let (decoded_size, encoded_size) = size.split_once(' ').unwrap_or((size, ""));
@@ -196,10 +203,15 @@ fn parse_pair_hashkey<'a>(
     })
 }
 
-fn parse_hashsize<'a>(hash: Option<&'a str>, size: Option<&'a str>) -> Option<HashSize<'a>> {
+fn parse_hashsize<T: FromStr>(hash: Option<&str>, size: Option<&str>) -> Option<HashSize<T>>
+where
+    T::Err: Debug,
+{
     let (hash, size) = (hash?, size?);
     Some(HashSize {
-        hash,
+        hash: hash
+            .parse()
+            .expect("hash was not a valid 32 character hex string"),
         size: size.parse().expect("hash size was not a number"),
     })
 }

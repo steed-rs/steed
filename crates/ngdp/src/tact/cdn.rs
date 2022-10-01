@@ -11,6 +11,10 @@ use reqwest::{
 };
 use running_average::RealTimeRunningAverage;
 
+use crate::util::format_hex_bytes;
+
+use super::{ContentKey, EncodingKey};
+
 pub struct CDNClient {
     servers: Vec<String>,
     cdn_path: String,
@@ -41,7 +45,7 @@ impl CDNClient {
         }
     }
 
-    pub fn rank_servers(&mut self, key: &str) -> Result<(), anyhow::Error> {
+    pub fn rank_servers(&mut self, key: &EncodingKey) -> Result<(), anyhow::Error> {
         let mut buf = vec![0; 16 * 1024 * 1024];
         let mut servers = vec![];
 
@@ -77,24 +81,24 @@ impl CDNClient {
     }
 
     // TODO: Make this use Key
-    pub fn read_config(&self, key: &str) -> Result<CDNReader, anyhow::Error> {
+    pub fn read_config(&self, key: &ContentKey) -> Result<CDNReader, anyhow::Error> {
         let path = self.config_path(key);
         self.read(&path)
     }
 
-    pub fn read_data(&self, key: &str) -> Result<CDNReader, anyhow::Error> {
+    pub fn read_data(&self, key: &EncodingKey) -> Result<CDNReader, anyhow::Error> {
         let path = self.data_path(key);
         self.read(&path)
     }
 
-    pub fn read_index(&self, key: &str) -> Result<CDNReader, anyhow::Error> {
+    pub fn read_index(&self, key: &EncodingKey) -> Result<CDNReader, anyhow::Error> {
         let path = self.index_path(key);
         self.read(&path)
     }
 
     pub fn read_data_part(
         &self,
-        key: &str,
+        key: &EncodingKey,
         offset: usize,
         size: usize,
     ) -> Result<CDNReader, anyhow::Error> {
@@ -139,7 +143,8 @@ impl CDNClient {
         bail!("404 fetching file: {}", path.display())
     }
 
-    fn config_path(&self, key: &str) -> PathBuf {
+    fn config_path(&self, key: &ContentKey) -> PathBuf {
+        let key = format_hex_bytes(&key.to_inner());
         PathBuf::from(&self.cdn_path)
             .join("config")
             .join(&key[0..2])
@@ -147,7 +152,8 @@ impl CDNClient {
             .join(key)
     }
 
-    fn data_path(&self, key: &str) -> PathBuf {
+    fn data_path(&self, key: &EncodingKey) -> PathBuf {
+        let key = format_hex_bytes(&key.to_inner());
         PathBuf::from(&self.cdn_path)
             .join("data")
             .join(&key[0..2])
@@ -155,7 +161,8 @@ impl CDNClient {
             .join(key)
     }
 
-    fn index_path(&self, key: &str) -> PathBuf {
+    fn index_path(&self, key: &EncodingKey) -> PathBuf {
+        let key = format_hex_bytes(&key.to_inner());
         PathBuf::from(&self.cdn_path)
             .join("data")
             .join(&key[0..2])

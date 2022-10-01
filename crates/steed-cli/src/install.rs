@@ -2,8 +2,8 @@ use anyhow::{anyhow, Context};
 use indicatif::{HumanBytes, MultiProgress, ProgressBar, ProgressStyle};
 use ngdp::{
     casc::{
-        blte::{compute_md5, decode_blte},
-        idx::{self, Indexes, Key},
+        blte::decode_blte,
+        idx::{self, Indexes},
         shmem::Shmem,
         FileHeader,
     },
@@ -15,8 +15,9 @@ use ngdp::{
         index::parse_index,
         install::parse_install_manifest,
         keys::TactKeys,
+        ContentKey, EncodingKey,
     },
-    util::{format_hex_bytes, parse_hex_bytes},
+    util::format_hex_bytes,
 };
 use ribbit::{cdns, versions, Server};
 use serde::{Deserialize, Serialize};
@@ -39,7 +40,7 @@ const COUNT_BAR_STYLE: &str =
 struct InstallState {
     install_tags: HashSet<String>,
     download_tags: HashSet<String>,
-    installed_files: HashSet<[u8; 16]>,
+    installed_files: HashSet<ContentKey>,
     // TODO: Include version?
 }
 
@@ -142,16 +143,16 @@ fn install_inner(
 
     let mut cdn = CDNClient::new(cdns.clone(), config.cdn_override.clone());
 
-    let build_config_text = builder.read_config(&cdn, &version.build_config)?;
-    let build_config = parse_build_config(&build_config_text);
+    let build_config_text = builder.read_config(&cdn, &version.build_config.parse()?)?;
+    let build_config = parse_build_config(&build_config_text)?;
     // dbg!(&build_config);
 
-    let cdn_config_text = builder.read_config(&cdn, &version.cdn_config)?;
+    let cdn_config_text = builder.read_config(&cdn, &version.cdn_config.parse()?)?;
     let cdn_config = parse_cdn_config(&cdn_config_text);
     // dbg!(&cdn_config);
 
     println!("Ranking CDN servers...");
-    cdn.rank_servers(cdn_config.archives[0])?;
+    cdn.rank_servers(&cdn_config.archives[0])?;
 
     let tact_keys = TactKeys::default();
     // populate_tact_keys_file(&config, &mut tact_keys)?;
@@ -162,9 +163,10 @@ fn install_inner(
             .as_ref()
             .ok_or_else(|| anyhow!("build config had no encoding field"))?
             .encoded
+            .as_ref()
             .ok_or_else(|| anyhow!("encoded hash for encoding file not found, can't progress"))?;
         let encoding_data = cdn
-            .read_data(encoding_hs.hash)?
+            .read_data(&encoding_hs.hash)?
             .read_vec(encoding_hs.size)?;
         let encoding_data = decode_blte(&tact_keys, &encoding_data)?;
         parse_encoding(&encoding_data).context("parsing encoding")?
@@ -189,10 +191,12 @@ fn install_inner(
         let index = parse_index(&index_data)?;
 
         let size: u64 = index.entries.values().map(|e| e.size).sum();
-        archive_sizes.insert(*archive, size);
+        archive_sizes.insert(archive.clone(), size);
 
         for (key, entry) in index.entries {
-            assert!(archived_files.insert(key, (*archive, entry)).is_none());
+            assert!(archived_files
+                .insert(key, (archive.clone(), entry))
+                .is_none());
         }
         bar.inc(1);
     }
@@ -203,9 +207,10 @@ fn install_inner(
         .as_ref()
         .ok_or_else(|| anyhow!("build config had no install field"))?
         .encoded
+        .as_ref()
         .ok_or_else(|| anyhow!("decoded install manifest key not supported"))?;
     let install_manifest_data = cdn
-        .read_data(install_manifest_hs.hash)?
+        .read_data(&install_manifest_hs.hash)?
         .read_vec(install_manifest_hs.size)?;
     let install_manifest = parse_install_manifest(&tact_keys, &install_manifest_data)?;
 
@@ -226,7 +231,7 @@ fn install_inner(
         let file_name = file.name.to_lowercase().replace('\\', "/");
         bar.set_message(file_name.clone());
 
-        if state.installed_files.contains(&file.key.0) {
+        if state.installed_files.contains(&file.key) {
             continue;
         }
 
@@ -238,8 +243,8 @@ fn install_inner(
 
             let already_installed = || -> Result<bool, anyhow::Error> {
                 let mut f = File::open(&path)?;
-                let res = read_md5(&mut f)?;
-                Ok(res == file.key.0)
+                let ckey = ContentKey::read_from_data(&mut f)?;
+                Ok(ckey == file.key)
             }();
             if already_installed.unwrap_or(false) {
                 bar.inc(file.size as u64);
@@ -254,7 +259,7 @@ fn install_inner(
             let mut reader = if let Some((archive, entry)) = archived_files.get(ekey) {
                 cdn.read_data_part(archive, entry.offset as usize, entry.size as usize)?
             } else {
-                cdn.read_data(&format!("{:?}", ekey))?
+                cdn.read_data(ekey)?
             };
             read_with_bar(&mb, &mut reader, &mut buf, file.size as usize)?;
 
@@ -264,7 +269,7 @@ fn install_inner(
             Ok(())
         }()?;
 
-        state.installed_files.insert(file.key.0);
+        state.installed_files.insert(file.key.clone());
         bar.inc(file.size as u64);
     }
     bar.finish();
@@ -275,7 +280,7 @@ fn install_inner(
         .encoded
         .ok_or_else(|| anyhow!("decoded download manifest key not supported"))?;
     let download_manifest_data = cdn
-        .read_data(download_manifest_hs.hash)?
+        .read_data(&download_manifest_hs.hash)?
         .read_vec(download_manifest_hs.size)?;
     let download_manifest = parse_download_manifest(&tact_keys, &download_manifest_data)?;
 
@@ -294,13 +299,16 @@ fn install_inner(
         }
 
         if let Some((archive, entry)) = archived_files.get(&file.key) {
-            by_archive.entry(*archive).or_default().push((file, entry));
+            by_archive
+                .entry(archive.clone())
+                .or_default()
+                .push((file, entry));
         } else {
             loose.push(file);
         };
     }
 
-    let mut archive_order = Vec::from_iter(by_archive.keys().copied());
+    let mut archive_order = Vec::from_iter(by_archive.keys().cloned());
     archive_order.sort_by_cached_key(|a| {
         by_archive[a]
             .iter()
@@ -367,7 +375,7 @@ fn install_inner(
     let mut wait_time = 0.0f64;
     let mut num_reqs = 0u32;
 
-    for (archive, entries) in archive_order.into_iter().map(|a| (a, &by_archive[a])) {
+    for (archive, entries) in archive_order.iter().map(|a| (a, &by_archive[a])) {
         let archive_size = archive_sizes[archive];
         let entries_size: u64 = entries.iter().map(|(f, _e)| f.file_size).sum();
         let waste = 1.0 - entries_size as f64 / archive_size as f64;
@@ -378,7 +386,7 @@ fn install_inner(
             let archive_est = req_overhead + 256_000_000.0 / bandwidth;
             let parts_est = entries.len() as f64 * req_overhead + entries_size as f64 / bandwidth;
             bar.set_message(format!(
-                "archive {} ({} entries, {:.02}% waste, bw {}/s, {} req/s, archive est {}, parts est {})",
+                "archive {:?} ({} entries, {:.02}% waste, bw {}/s, {} req/s, archive est {}, parts est {})",
                 archive,
                 entries.len(),
                 waste * 100.0,
@@ -425,7 +433,7 @@ fn install_inner(
     }
 
     for file in loose {
-        let mut reader = cdn.read_data(&format!("{:?}", &file.key))?;
+        let mut reader = cdn.read_data(&file.key)?;
         allocate_and_write(file, &mut reader)?;
         bar.inc(file.file_size);
     }
@@ -437,14 +445,6 @@ fn install_inner(
     // TODO: Generate .build.info
 
     Ok(())
-}
-
-fn read_md5(r: &mut impl Read) -> Result<[u8; 16], anyhow::Error> {
-    use md5::{Digest, Md5};
-    let mut hasher = Md5::new();
-    std::io::copy(r, &mut hasher)?;
-    let res = hasher.finalize();
-    Ok(res.into())
 }
 
 fn read_with_bar(
@@ -550,26 +550,26 @@ impl CASCBuilder {
         Ok(())
     }
 
-    pub fn read_config(&self, cdn: &CDNClient, key: &str) -> Result<String, anyhow::Error> {
+    pub fn read_config(&self, cdn: &CDNClient, key: &ContentKey) -> Result<String, anyhow::Error> {
+        let formatted = format_hex_bytes(&key.to_inner());
         let path = self
             .root
             .join("Data")
             .join("config")
-            .join(&key[0..2])
-            .join(&key[2..4])
-            .join(key);
+            .join(&formatted[0..2])
+            .join(&formatted[2..4])
+            .join(formatted);
         let res = self.try_read(
             &path,
             0,
             || cdn.read_config(key),
             |data| {
-                let expected_hash = parse_hex_bytes::<16>(key).expect("wrong key length");
-                let hash = compute_md5(data);
-                if hash != expected_hash {
+                let computed_key = ContentKey::from_data(data);
+                if computed_key != *key {
                     anyhow::bail!(
-                        "config hash not correct! expected: {:02x?}, calculated: {:02x?}",
+                        "config hash not correct! expected: {:?}, calculated: {:?}",
                         key,
-                        format_hex_bytes(&hash)
+                        computed_key
                     );
                 }
                 Ok(())
@@ -582,13 +582,16 @@ impl CASCBuilder {
     pub fn read_archive_index(
         &self,
         cdn: &CDNClient,
-        key: &str,
+        key: &EncodingKey,
         expected_size: usize,
     ) -> Result<Vec<u8>, anyhow::Error> {
-        let key = format!("{}.index", key);
-        let path = self.root.join("Data").join("indices").join(&key);
+        let path = self
+            .root
+            .join("Data")
+            .join("indices")
+            .join(format!("{:?}.index", key));
         // TODO: Verify
-        self.try_read(&path, expected_size, || cdn.read_data(&key), |_data| Ok(()))
+        self.try_read(&path, expected_size, || cdn.read_index(key), |_data| Ok(()))
     }
 
     fn try_read(
@@ -626,7 +629,7 @@ impl CASCBuilder {
         Ok(data)
     }
 
-    pub fn insert_in_index(&mut self, k: &Key, entry: idx::Entry) {
+    pub fn insert_in_index(&mut self, k: &EncodingKey, entry: idx::Entry) {
         // TODO: Should we error on duplicate entry?
         let (idx, _) = self.indexes.insert(k, entry);
         self.index_changed[idx] = true;

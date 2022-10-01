@@ -1,9 +1,10 @@
 use crate::{
-    casc::{blte::decode_blte, idx::Key, shmem::Shmem},
+    casc::{blte::decode_blte, shmem::Shmem},
     tact::{
         config::BuildConfig,
         encoding::{parse_encoding, Encoding},
         keys::TactKeys,
+        ContentKey, EncodingKey,
     },
 };
 use anyhow::anyhow;
@@ -107,7 +108,7 @@ fn read_file(
     assert!(buf.len() > FileHeader::SIZE, "data block too small");
 
     let header = FileHeader::read(&mut Cursor::new(&buf))?;
-    let _key = Key::from_rev(header.hash);
+    let _key = EncodingKey::from_rev(header.hash);
 
     let (checksum_a, checksum_b) = FileHeader::checksums(&buf, entry.archive_index, entry.offset);
     assert_eq!(checksum_a, header.checksum_a);
@@ -171,8 +172,7 @@ impl CASC {
                 .encoded
                 .as_ref()
                 .expect("encoded hash for encoding file not found, can't progress");
-            let key = Key::from_hex(decoded_encoding_hashsize.hash);
-            let entry = indexes.lookup(&key).unwrap();
+            let entry = indexes.lookup(&decoded_encoding_hashsize.hash).unwrap();
             let file = read_file(&data_path, entry, &tact_keys)?;
             parse_encoding(&file)?
         };
@@ -185,7 +185,7 @@ impl CASC {
         })
     }
 
-    pub fn read_by_ckey(&self, ckey: &Key) -> Result<Vec<u8>, anyhow::Error> {
+    pub fn read_by_ckey(&self, ckey: &ContentKey) -> Result<Vec<u8>, anyhow::Error> {
         let ce_entry = self
             .encoding
             .lookup_by_ckey(ckey)

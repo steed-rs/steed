@@ -7,13 +7,15 @@ use std::fmt::Debug;
 use std::io::Cursor;
 use std::path::Path;
 
+use crate::tact::EncodingKey;
+
 use super::shmem::Shmem;
 use super::NUM_INDEXES;
 
 #[derive(Debug)]
 pub struct Index {
     pub index: u8,
-    pub entries: BTreeMap<ShortKey, Entry>,
+    pub entries: BTreeMap<[u8; 9], Entry>,
 }
 
 #[derive(Debug, Clone)]
@@ -64,7 +66,7 @@ impl Index {
             };
 
             // BTreeMap::from_iter is seemingly faster on sorted input, but we lose the ability to check for duplicate keys
-            let exists = entry_map.insert(key.clone(), entry.clone());
+            let exists = entry_map.insert(key, entry.clone());
             if let Some(old_entry) = exists {
                 eprintln!(
                     "duplicate key: {:?}. old value: {:?}, new value: {:?}",
@@ -113,7 +115,7 @@ impl Index {
                 BE::write_uint(&mut offset, index_offset, 5);
 
                 repr::Entry {
-                    key: key.clone(),
+                    key: *key,
                     offset,
                     size: entry.size,
                 }
@@ -168,25 +170,25 @@ impl Indexes {
         Ok(Indexes::new(indexes))
     }
 
-    pub fn lookup(&self, k: &Key) -> Option<&Entry> {
+    pub fn lookup(&self, k: &EncodingKey) -> Option<&Entry> {
         let bucket = Self::get_bucket(k) as usize;
         let index = &self.indexes[bucket];
         index.entries.get(&k.short())
     }
 
-    pub fn insert(&mut self, k: &Key, entry: Entry) -> (usize, Option<Entry>) {
+    pub fn insert(&mut self, k: &EncodingKey, entry: Entry) -> (usize, Option<Entry>) {
         let bucket = Self::get_bucket(k) as usize;
         let index = &mut self.indexes[bucket];
         (bucket, index.entries.insert(k.short(), entry))
     }
 
-    pub fn lookup_cross_ref(&self, k: &Key) -> Option<&Entry> {
+    pub fn lookup_cross_ref(&self, k: &EncodingKey) -> Option<&Entry> {
         let bucket = Self::get_bucket_cross_ref(k) as usize;
         let index = &self.indexes[bucket];
         index.entries.get(&k.short())
     }
 
-    pub fn iter_all_entries(&self) -> impl Iterator<Item = (&ShortKey, &Entry)> {
+    pub fn iter_all_entries(&self) -> impl Iterator<Item = (&[u8; 9], &Entry)> {
         self.indexes.iter().flat_map(|f| f.entries.iter())
     }
 
@@ -205,13 +207,13 @@ impl Indexes {
         Ok(())
     }
 
-    fn get_bucket(k: &Key) -> u8 {
-        let k = k.0;
+    fn get_bucket(k: &EncodingKey) -> u8 {
+        let k = k.to_inner();
         let i = k[0] ^ k[1] ^ k[2] ^ k[3] ^ k[4] ^ k[5] ^ k[6] ^ k[7] ^ k[8];
         (i & 0xf) ^ (i >> 4)
     }
 
-    fn get_bucket_cross_ref(k: &Key) -> u8 {
+    fn get_bucket_cross_ref(k: &EncodingKey) -> u8 {
         let i = Self::get_bucket(k);
         (i + 1) % 16
     }
@@ -225,61 +227,7 @@ impl Default for Indexes {
     }
 }
 
-#[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash, BinRead, BinWrite)]
-pub struct Key(pub [u8; 16]);
-
-impl Key {
-    pub const ZERO: Key = Key([0u8; 16]);
-
-    pub fn from_rev(mut input: [u8; 16]) -> Self {
-        input.reverse();
-        Self(input)
-    }
-
-    pub fn to_rev(&self) -> [u8; 16] {
-        let mut res = self.0;
-        res.reverse();
-        res
-    }
-
-    pub fn from_hex(input: &str) -> Self {
-        let mut res = [0; 16];
-        hex::decode_to_slice(input, &mut res).unwrap();
-        Self(res)
-    }
-
-    pub fn short(&self) -> ShortKey {
-        ShortKey(self.0[0..9].try_into().unwrap())
-    }
-
-    pub fn as_slice(&self) -> &[u8] {
-        self.0.as_slice()
-    }
-}
-
-impl Debug for Key {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        for byte in self.0 {
-            write!(f, "{:02x}", byte)?;
-        }
-        Ok(())
-    }
-}
-
-#[derive(PartialEq, Eq, PartialOrd, Ord, Hash, Clone, BinRead, BinWrite)]
-pub struct ShortKey([u8; 9]);
-
-impl Debug for ShortKey {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        for byte in self.0 {
-            write!(f, "{:02x}", byte)?;
-        }
-        Ok(())
-    }
-}
-
 mod repr {
-    use super::ShortKey;
     use binrw::{BinRead, BinWrite};
 
     #[derive(BinRead, BinWrite, Debug)]
@@ -312,7 +260,7 @@ mod repr {
     #[derive(BinRead, BinWrite, Debug)]
     #[brw(little)]
     pub struct Entry {
-        pub key: ShortKey,
+        pub key: [u8; 9],
         pub offset: [u8; 5],
         pub size: u32,
     }

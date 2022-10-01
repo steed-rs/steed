@@ -3,8 +3,8 @@ use std::{collections::HashSet, io::Cursor};
 use binrw::BinRead;
 use bitvec::{prelude::Msb0, vec::BitVec};
 
-use super::keys::TactKeys;
-use crate::casc::{blte::decode_blte, idx::Key};
+use super::{keys::TactKeys, ContentKey};
+use crate::casc::blte::decode_blte;
 
 #[derive(Debug)]
 pub struct InstallManifest {
@@ -37,7 +37,7 @@ impl InstallManifest {
 #[derive(Debug)]
 pub struct File {
     pub name: String,
-    pub key: Key,
+    pub key: ContentKey,
     pub size: u32,
 }
 
@@ -98,7 +98,7 @@ pub fn parse_install_manifest(
 mod repr {
     use binrw::{BinRead, NullString};
 
-    use crate::casc::idx::Key;
+    use crate::tact::ContentKey;
 
     #[derive(BinRead)]
     #[br(big, magic = b"IN")]
@@ -131,7 +131,7 @@ mod repr {
     #[br(big)]
     pub struct File {
         pub name: NullString,
-        pub key: Key,
+        pub key: ContentKey,
         pub size: u32,
     }
 

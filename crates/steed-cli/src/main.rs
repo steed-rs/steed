@@ -1,7 +1,7 @@
 use anyhow::anyhow;
 use catalog::{Catalog, CatalogFragment};
 use ngdp::{
-    casc::{idx::Key, CASC},
+    casc::CASC,
     listfile::{parse_listfile, ListFile},
     tact::{
         cdn::CDNClient,
@@ -75,16 +75,17 @@ fn do_stuff(config: &Config) -> Result<(), anyhow::Error> {
 
     let cdncache = CDNClient::new(cdns.clone(), config.cdn_override.clone());
 
-    let build_config_text = cdncache.read_config(&version.build_config)?.read_string()?;
-    let build_config = parse_build_config(&build_config_text);
+    let build_config_text = cdncache
+        .read_config(&version.build_config.parse()?)?
+        .read_string()?;
+    let build_config = parse_build_config(&build_config_text)?;
     dbg!(&build_config);
 
     let state = {
         let mut casc = CASC::new(&config.wow_path, &build_config)?;
 
         let root = {
-            let ckey = Key::from_hex(build_config.root);
-            let file = casc.read_by_ckey(&ckey)?;
+            let file = casc.read_by_ckey(&build_config.root)?;
             parse_root(&file)?
         };
 
@@ -207,11 +208,15 @@ fn catalog(config: &Config) -> Result<(), anyhow::Error> {
 
     let cdncache = CDNClient::new(cdns.clone(), config.cdn_override.clone());
 
-    let build_config_text = cdncache.read_config(&version.build_config)?.read_string()?;
-    let build_config = parse_build_config(&build_config_text);
+    let build_config_text = cdncache
+        .read_config(&version.build_config.parse()?)?
+        .read_string()?;
+    let build_config = parse_build_config(&build_config_text)?;
     dbg!(&build_config);
 
-    let cdn_config_text = cdncache.read_config(&version.cdn_config)?.read_string()?;
+    let cdn_config_text = cdncache
+        .read_config(&version.cdn_config.parse()?)?
+        .read_string()?;
     let cdn_config = parse_cdn_config(&cdn_config_text);
     dbg!(&cdn_config);
 
@@ -222,7 +227,9 @@ fn catalog(config: &Config) -> Result<(), anyhow::Error> {
     // let index = parse_index(&index_raw).ok_or_else(|| anyhow!("couldn't parse index"))?;
     // dbg!(index);
 
-    let catalog_text = cdncache.read_data(build_config.root)?.read_string()?;
+    let catalog_text = cdncache
+        .read_data(&build_config.root.unencoded())?
+        .read_string()?;
     let catalog: Catalog = serde_json::from_str(&catalog_text)?;
     // dbg!(&catalog);
 
@@ -236,7 +243,7 @@ fn catalog(config: &Config) -> Result<(), anyhow::Error> {
             continue;
         }
 
-        let fragment_text = cdncache.read_data(&fragment.hash)?.read_string()?;
+        let fragment_text = cdncache.read_data(&fragment.hash.parse()?)?.read_string()?;
         println!("{}", fragment_text);
         println!();
         let fragment: CatalogFragment = serde_json::from_str(&fragment_text)?;

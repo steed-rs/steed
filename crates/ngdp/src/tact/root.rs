@@ -5,7 +5,7 @@ use std::io::Cursor;
 use binrw::BinRead;
 use lookup3::hashlittle2;
 
-use crate::casc::idx::Key;
+use super::ContentKey;
 
 #[derive(Debug)]
 pub struct Root {
@@ -137,7 +137,7 @@ impl std::fmt::Debug for RecordType {
 
 #[derive(Debug, Clone)]
 pub struct Record {
-    pub content_key: Key,
+    pub content_key: ContentKey,
     pub name_hash: Option<u64>,
 }
 
@@ -198,7 +198,7 @@ bitflags::bitflags! {
 mod repr {
     use binrw::{until_eof, BinRead};
 
-    use crate::casc::idx::Key;
+    use crate::tact::ContentKey;
 
     use super::{ContentFlags, LocaleFlags};
 
@@ -227,7 +227,7 @@ mod repr {
         pub file_data_id_deltas: Vec<i32>,
 
         #[br(count = num_records)]
-        pub content_keys: Vec<Key>,
+        pub content_keys: Vec<ContentKey>,
 
         #[br(if(!(allow_non_named_files && flags.contains(ContentFlags::NO_NAME_HASH))), count = num_records)]
         pub name_hashes: Vec<u64>,

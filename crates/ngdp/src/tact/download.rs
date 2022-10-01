@@ -3,8 +3,8 @@ use std::{collections::HashSet, io::Cursor};
 use binrw::BinRead;
 use bitvec::{prelude::Msb0, vec::BitVec};
 
-use super::keys::TactKeys;
-use crate::casc::{blte::decode_blte, idx::Key};
+use super::{keys::TactKeys, EncodingKey};
+use crate::casc::blte::decode_blte;
 
 #[derive(Debug)]
 pub struct DownloadManifest {
@@ -53,7 +53,7 @@ pub fn parse_download_manifest(
             .entries
             .into_iter()
             .map(|e| Entry {
-                key: Key(e.key.try_into().unwrap()),
+                key: EncodingKey::from_slice(&e.key),
                 file_size: e.file_size.get(),
                 download_priority: e.download_priority,
                 checksum: e.checksum,
@@ -80,7 +80,7 @@ pub fn parse_download_manifest(
 
 #[derive(Debug)]
 pub struct Entry {
-    pub key: Key,
+    pub key: EncodingKey,
     pub file_size: u64,
     pub download_priority: u8,
     pub checksum: Option<u32>,
