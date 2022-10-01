@@ -14,10 +14,7 @@ pub struct InstallManifest {
 }
 
 impl InstallManifest {
-    pub fn files_with_tags<'a, 'b>(
-        &'a self,
-        tags: &HashSet<String>,
-    ) -> impl Iterator<Item = &'a File> {
+    pub fn files_with_tags<'a>(&'a self, tags: &HashSet<String>) -> impl Iterator<Item = &'a File> {
         let mut files = BitVec::from_iter(std::iter::repeat(true).take(self.files.len()));
 
         let categories = self.tags.iter().map(|t| t.type_).max().unwrap_or(0);

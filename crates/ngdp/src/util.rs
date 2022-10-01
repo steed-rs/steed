@@ -49,7 +49,7 @@ pub fn parse_hex_bytes<const N: usize>(s: &str) -> Option<[u8; N]> {
 
 pub fn format_hex_bytes<const N: usize>(val: &[u8; N]) -> String {
     let mut res = String::with_capacity(N * 2);
-    for byte in val.iter().rev().copied() {
+    for byte in val.iter().rev() {
         res.write_fmt(format_args!("{:02x}", byte)).unwrap();
     }
     res

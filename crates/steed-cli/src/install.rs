@@ -164,7 +164,7 @@ fn install_inner(
             .encoded
             .ok_or_else(|| anyhow!("encoded hash for encoding file not found, can't progress"))?;
         let encoding_data = cdn
-            .read_data(&encoding_hs.hash)?
+            .read_data(encoding_hs.hash)?
             .read_vec(encoding_hs.size)?;
         let encoding_data = decode_blte(&tact_keys, &encoding_data)?;
         parse_encoding(&encoding_data).context("parsing encoding")?
@@ -275,7 +275,7 @@ fn install_inner(
         .encoded
         .ok_or_else(|| anyhow!("decoded download manifest key not supported"))?;
     let download_manifest_data = cdn
-        .read_data(&download_manifest_hs.hash)?
+        .read_data(download_manifest_hs.hash)?
         .read_vec(download_manifest_hs.size)?;
     let download_manifest = parse_download_manifest(&tact_keys, &download_manifest_data)?;
 
@@ -561,7 +561,7 @@ impl CASCBuilder {
         let res = self.try_read(
             &path,
             0,
-            || cdn.read_config(&key),
+            || cdn.read_config(key),
             |data| {
                 let expected_hash = parse_hex_bytes::<16>(key).expect("wrong key length");
                 let hash = compute_md5(data);
@@ -598,14 +598,10 @@ impl CASCBuilder {
         get_reader: impl FnOnce() -> Result<CDNReader, anyhow::Error>,
         verify: impl FnOnce(&[u8]) -> Result<(), anyhow::Error>,
     ) -> Result<Vec<u8>, anyhow::Error> {
-        match std::fs::read(path) {
-            Ok(res) => {
-                verify(&res)?;
-                return Ok(res);
-            }
-            Err(_) => {
-                // If any error occurs, redownload the config
-            }
+        // If any error occurs, redownload the config
+        if let Ok(res) = std::fs::read(path) {
+            verify(&res)?;
+            return Ok(res);
         };
 
         let mut reader = get_reader()?;

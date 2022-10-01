@@ -5,7 +5,7 @@ use serde_json::Value;
 
 // TODO: Verify if there's sane defaults for Option<bool> fields
 
-#[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Default, Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Catalog {
     pub categories: Categories,
@@ -22,7 +22,7 @@ pub struct Catalog {
     pub version: i64,
 }
 
-#[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Default, Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct CatalogFragment {
     // TODO: Clear up overlap
@@ -47,13 +47,13 @@ pub struct CatalogFragment {
     pub categories: Option<Categories>,
 }
 
-#[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Default, Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Categories {
     pub definitions: Vec<Definition>,
 }
 
-#[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Default, Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Definition {
     pub id: String,
@@ -61,20 +61,20 @@ pub struct Definition {
     pub rank: i64,
 }
 
-#[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Default, Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ConnectionString {
     pub global: Vec<Global>,
 }
 
-#[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Default, Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Global {
     pub aurora: String,
     pub id: String,
 }
 
-#[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Default, Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Environment {
     pub aurora: String,
@@ -86,13 +86,13 @@ pub struct Environment {
     pub hidden: Option<bool>,
 }
 
-#[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Default, Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Types {
     pub definitions: Vec<Definition2>,
 }
 
-#[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Default, Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Definition2 {
     pub category: String,
@@ -100,7 +100,7 @@ pub struct Definition2 {
     pub product_defaults: Option<ProductDefaults>,
 }
 
-#[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Default, Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ProductDefaults {
     pub name_style: Option<String>,
@@ -110,7 +110,7 @@ pub struct ProductDefaults {
     pub ribbon_text: Option<String>,
 }
 
-#[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Default, Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Fragment {
     pub hash: String,
@@ -121,14 +121,14 @@ pub struct Fragment {
     pub encrypted_hash: Option<String>,
 }
 
-#[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Default, Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Resource {
     pub hash: String,
     pub name: String,
 }
 
-#[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Default, Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct PerLocale<T> {
     pub default: Option<T>,
@@ -167,7 +167,7 @@ pub type Files = HashMap<String, Resource>;
 pub type Strings = HashMap<String, String>;
 pub type Installs = HashMap<String, InstallItem>;
 
-#[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Default, Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct InstallItem {
     pub tact_product: String,
@@ -185,7 +185,7 @@ pub struct InstallItem {
     pub additional_tags: Vec<InstallTag>,
 }
 
-#[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Default, Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct AutoUpdatePolicy {
     pub meets_criteria: MeetsCriteria,
@@ -193,7 +193,7 @@ pub struct AutoUpdatePolicy {
     pub requires_licenses: Vec<i64>,
 }
 
-#[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Default, Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct MeetsCriteria {
     pub actioned_in_last_n_seconds: Option<i64>,
@@ -201,7 +201,7 @@ pub struct MeetsCriteria {
     pub has_game_time: Option<bool>,
 }
 
-#[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Default, Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct InstallTag {
     pub license_id: Option<i64>,
@@ -209,7 +209,7 @@ pub struct InstallTag {
     pub tags: Vec<String>,
 }
 
-#[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Default, Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct PresenceResource {
     pub display_name: String,
@@ -221,13 +221,13 @@ pub struct PresenceResource {
     pub program_id: String,
 }
 
-#[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Default, Debug, Clone, Serialize, Deserialize)]
 pub struct Product {
     pub base: Base,
     pub id: String,
 }
 
-#[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Default, Debug, Clone, Serialize, Deserialize)]
 pub struct Base {
     pub breaking_news_url: Option<String>,
     pub content_id: Option<String>,
@@ -270,14 +270,14 @@ pub struct Base {
     pub unsupported_platform_behavior: Option<String>,
 }
 
-#[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Default, Debug, Clone, Serialize, Deserialize)]
 pub struct MobileStore {
     pub description: String,
     pub logo: String,
     pub url: String,
 }
 
-#[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Default, Debug, Clone, Serialize, Deserialize)]
 pub struct QuickLink {
     pub id: String,
     pub hidden: Option<bool>,
@@ -290,7 +290,7 @@ pub struct QuickLink {
     pub color: Option<String>,
 }
 
-#[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Default, Debug, Clone, Serialize, Deserialize)]
 pub struct Action {
     #[serde(rename = "type")]
     pub type_field: String,
@@ -299,14 +299,14 @@ pub struct Action {
     pub custom_action_id: Option<String>,
 }
 
-#[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Default, Debug, Clone, Serialize, Deserialize)]
 pub struct RegionPermissionFlags {
     pub default: Option<String>,
     #[serde(default = "Vec::new")]
     pub overrides: Vec<Override>,
 }
 
-#[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Default, Debug, Clone, Serialize, Deserialize)]
 pub struct Override {
     #[serde(rename = "CN")]
     pub cn: Option<String>,
@@ -317,7 +317,7 @@ pub struct Override {
     pub rus: Option<String>,
 }
 
-#[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Default, Debug, Clone, Serialize, Deserialize)]
 pub struct StarterItem {
     pub id: String,
     #[serde(rename = "type")]
@@ -331,7 +331,7 @@ pub struct StarterItem {
 
 pub type ProductTypes = HashMap<String, ProductType>;
 
-#[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Default, Debug, Clone, Serialize, Deserialize)]
 pub struct ProductType {
     pub uid: Option<String>,
     pub auto_favorite_on_grant: Option<bool>,
@@ -342,7 +342,7 @@ pub struct ProductType {
     pub play_disabled_message: Option<String>,
 }
 
-#[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Default, Debug, Clone, Serialize, Deserialize)]
 pub struct Feature {
     pub id: String,
     pub requires: Value,

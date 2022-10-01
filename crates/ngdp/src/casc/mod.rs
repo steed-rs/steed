@@ -61,7 +61,7 @@ impl FileHeader {
         LE::write_u32(&mut buf[Self::CHECKSUM_A_OFF..], checksum_a);
         LE::write_u32(&mut buf[Self::CHECKSUM_B_OFF..], checksum_b);
 
-        w.write(&buf)?;
+        w.write_all(&buf)?;
         Ok(())
     }
 
@@ -83,9 +83,9 @@ impl FileHeader {
         }
 
         let mut checksum_b = [0u8; 4];
-        for j in 0..4 {
+        for (j, dst) in checksum_b.iter_mut().enumerate() {
             let i = j + Self::CHECKSUM_B_OFF + offset as usize;
-            checksum_b[j] = hashed_header[i & 3] ^ encoded_offset[i & 3];
+            *dst = hashed_header[i & 3] ^ encoded_offset[i & 3];
         }
 
         (checksum_a, u32::from_le_bytes(checksum_b))
@@ -171,7 +171,7 @@ impl CASC {
                 .encoded
                 .as_ref()
                 .expect("encoded hash for encoding file not found, can't progress");
-            let key = Key::from_hex(&decoded_encoding_hashsize.hash);
+            let key = Key::from_hex(decoded_encoding_hashsize.hash);
             let entry = indexes.lookup(&key).unwrap();
             let file = read_file(&data_path, entry, &tact_keys)?;
             parse_encoding(&file)?

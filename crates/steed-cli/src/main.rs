@@ -93,7 +93,7 @@ fn do_stuff(config: &Config) -> Result<(), anyhow::Error> {
             parse_listfile(&content)?
         };
 
-        populate_tact_keys_file(&config, &mut casc.tact_keys)?;
+        populate_tact_keys_file(config, &mut casc.tact_keys)?;
 
         State {
             casc,
@@ -141,6 +141,7 @@ fn do_stuff(config: &Config) -> Result<(), anyhow::Error> {
                 return;
             }
 
+            let _ = data;
             // dbg!(_res);
         });
 
@@ -215,7 +216,7 @@ fn catalog(config: &Config) -> Result<(), anyhow::Error> {
     dbg!(&cdn_config);
 
     let mut tact_keys = TactKeys::default();
-    populate_tact_keys_file(&config, &mut tact_keys)?;
+    populate_tact_keys_file(config, &mut tact_keys)?;
 
     // let index_raw = cdncache.read_index(cdn_config.file_index.hash, cdn_config.file_index.size)?;
     // let index = parse_index(&index_raw).ok_or_else(|| anyhow!("couldn't parse index"))?;

@@ -14,7 +14,7 @@ pub struct DownloadManifest {
 }
 
 impl DownloadManifest {
-    pub fn entries_with_tags<'a, 'b>(
+    pub fn entries_with_tags<'a>(
         &'a self,
         tags: &HashSet<String>,
     ) -> impl Iterator<Item = &'a Entry> {

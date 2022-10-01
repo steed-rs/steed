@@ -34,7 +34,7 @@ impl Root {
                 file_data_id += block.file_data_id_deltas[i] + 1;
 
                 let record = Record {
-                    content_key: content_key,
+                    content_key,
                     name_hash: block.name_hashes.get(i).copied(),
                 };
 

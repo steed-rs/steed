@@ -4,14 +4,13 @@ use std::{fmt::Debug, io::Cursor};
 use super::{idx::Indexes, MAX_DATA_SIZE, NUM_INDEXES};
 use crate::binrw_ext::u40;
 
-#[derive(PartialEq)]
 pub struct Shmem {
     pub data_path: String,
     pub index_versions: [u32; NUM_INDEXES],
     pub unused_bytes: Vec<UnusedBytes>,
 }
 
-#[derive(PartialEq, Debug, Clone)]
+#[derive(Debug, Clone)]
 pub struct UnusedBytes {
     pub data_file_missing: u16,
     pub data_number: u16,
@@ -81,7 +80,7 @@ impl Shmem {
 
         let mut unused_bytes: Vec<UnusedBytes> = vec![];
         for entry in all_entries {
-            let mut last = unused_bytes.pop().unwrap_or_else(|| UnusedBytes {
+            let mut last = unused_bytes.pop().unwrap_or(UnusedBytes {
                 data_file_missing: 1,
                 data_number: entry.archive_index,
                 count: 0,
@@ -242,6 +241,7 @@ mod repr {
 
     #[derive(BinRead, BinWrite, Debug)]
     #[brw(little)]
+    #[allow(clippy::large_enum_variant)]
     pub enum Block {
         #[brw(magic(0u32))]
         Block0 { next_block: u32 },
