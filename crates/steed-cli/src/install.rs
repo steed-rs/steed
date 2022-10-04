@@ -1,8 +1,8 @@
 use anyhow::{anyhow, Context};
 use indicatif::{HumanBytes, MultiProgress, ProgressBar, ProgressStyle};
 use ngdp::{
+    blte::decode_blte,
     casc::{
-        blte::decode_blte,
         idx::{self, Indexes},
         shmem::Shmem,
         FileHeader,

@@ -1,5 +1,6 @@
 use crate::{
-    casc::{blte::decode_blte, shmem::Shmem},
+    blte::decode_blte,
+    casc::shmem::Shmem,
     tact::{
         config::BuildConfig,
         encoding::{parse_encoding, Encoding},
@@ -20,7 +21,6 @@ use std::{
 
 use self::idx::Indexes;
 
-pub mod blte;
 pub mod idx;
 pub mod shmem;
 

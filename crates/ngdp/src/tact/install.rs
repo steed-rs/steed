@@ -4,7 +4,7 @@ use binrw::BinRead;
 use bitvec::{prelude::Msb0, vec::BitVec};
 
 use super::{keys::TactKeys, ContentKey};
-use crate::casc::blte::decode_blte;
+use crate::blte::decode_blte;
 
 #[derive(Debug)]
 pub struct InstallManifest {
