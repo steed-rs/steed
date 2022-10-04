@@ -80,7 +80,6 @@ impl CDNClient {
         Ok(())
     }
 
-    // TODO: Make this use Key
     pub fn read_config(&self, key: &ContentKey) -> Result<CDNReader, anyhow::Error> {
         let path = self.config_path(key);
         self.read(&path)
@@ -107,17 +106,23 @@ impl CDNClient {
     }
 
     fn read(&self, path: &Path) -> Result<CDNReader, anyhow::Error> {
+        let mut last_error = anyhow::anyhow!("No CDNs defined");
         for server in self.servers() {
             let url = self.cdn_url(server, path);
-            let resp = self.client.get(&url).send()?;
-            if resp.status().is_success() {
-                return Ok(CDNReader::new(resp));
-            } else {
-                // Try next cdn
-                continue;
+            let resp = self.client.get(&url).send();
+            dbg!(&resp);
+            match resp {
+                Ok(resp) if resp.status().is_success() => return Ok(CDNReader::new(resp)),
+                _ => {
+                    if let Err(e) = resp {
+                        last_error = e.into();
+                    }
+                    // Try next CDN
+                    continue;
+                }
             }
         }
-        bail!("404 fetching file: {}", path.display())
+        Err(last_error)
     }
 
     fn read_part(

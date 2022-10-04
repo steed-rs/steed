@@ -104,6 +104,8 @@ macro_rules! impl_Key {
             fn from_str(s: &str) -> Result<Self, Self::Err> {
                 let mut res = [0; 16];
                 hex::decode_to_slice(s, &mut res)?;
+                // Keys in text form are MSB first, whereas hex::decode is LSB first
+                res.reverse();
                 Ok(Self(res))
             }
         }
