@@ -1,12 +1,14 @@
 use binrw::BinRead;
 use std::io::Cursor;
 
-use super::ContentKey;
+use crate::blte::espec::ESpec;
+
+use super::{ContentKey, EncodingKey};
 
 pub struct Encoding {
     pub hash_size_ckey: u8,
     pub hash_size_ekey: u8,
-    pub especs: Vec<String>,
+    pub especs: Vec<ESpec>,
     pub cekey_page_headers: Vec<repr::CEKeyPageHeader>,
     pub cekey_pages: Vec<repr::CEKeyPage>,
     pub ekey_spec_page_headers: Vec<repr::EKeySpecPageHeader>,
@@ -54,13 +56,11 @@ impl Encoding {
         None
     }
 
-    pub fn lookup_espec(&self, ekey: &[u8]) -> Option<(&repr::EKeySpecEntry, &str)> {
-        assert_eq!(self.hash_size_ckey as usize, ekey.len());
-
+    pub fn lookup_espec(&self, ekey: &EncodingKey) -> Option<&ESpec> {
         let mut page_idx = 0;
-        let mut prev_first_key = self.ekey_spec_page_headers[0].first_key.as_slice();
+        let mut prev_first_key = &self.ekey_spec_page_headers[0].first_key;
         for (i, page_header) in self.ekey_spec_page_headers.iter().enumerate().skip(1) {
-            let next_first_key = page_header.first_key.as_slice();
+            let next_first_key = &page_header.first_key;
             if ekey >= prev_first_key && ekey <= next_first_key {
                 break;
             } else {
@@ -73,8 +73,8 @@ impl Encoding {
             .entries
             .0
             .iter()
-            .find(|entry| entry.ekey.as_slice() == ekey)
-            .map(|e| (e, self.especs[e.espec_index as usize].as_str()))
+            .find(|entry| &entry.ekey == ekey)
+            .and_then(|e| self.especs.get(e.espec_index as usize))
     }
 }
 
@@ -93,8 +93,8 @@ pub fn parse_encoding(content: &[u8]) -> Result<Encoding, anyhow::Error> {
             .espec_block
             .0
             .into_iter()
-            .map(|s| s.to_string())
-            .collect(),
+            .map(|s| s.to_string().parse())
+            .collect::<Result<Vec<_>, _>>()?,
         cekey_page_headers: res.cekey_page_headers,
         cekey_pages: res.cekey_pages,
         ekey_spec_page_headers: res.ekey_spec_page_headers,
