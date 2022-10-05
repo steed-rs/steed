@@ -8,6 +8,7 @@ use ngdp::{
         config::{parse_build_config, parse_cdn_config},
         keys::TactKeys,
         root::{parse_root, ContentFlags, LocaleFlags, Root},
+        ContentKey, EncodingKey,
     },
     util::parse_hex_bytes,
 };
@@ -76,7 +77,7 @@ fn do_stuff(config: &Config) -> Result<(), anyhow::Error> {
     let cdncache = CDNClient::new(cdns.clone(), config.cdn_override.clone());
 
     let build_config_text = cdncache
-        .read_config(&version.build_config.parse()?)?
+        .read_config(&ContentKey::parse_rev(&version.build_config)?)?
         .read_string()?;
     let build_config = parse_build_config(&build_config_text)?;
     dbg!(&build_config);
@@ -209,13 +210,13 @@ fn catalog(config: &Config) -> Result<(), anyhow::Error> {
     let cdncache = CDNClient::new(cdns.clone(), config.cdn_override.clone());
 
     let build_config_text = cdncache
-        .read_config(&version.build_config.parse()?)?
+        .read_config(&ContentKey::parse(&version.build_config)?)?
         .read_string()?;
     let build_config = parse_build_config(&build_config_text)?;
     dbg!(&build_config);
 
     let cdn_config_text = cdncache
-        .read_config(&version.cdn_config.parse()?)?
+        .read_config(&ContentKey::parse(&version.cdn_config)?)?
         .read_string()?;
     let cdn_config = parse_cdn_config(&cdn_config_text);
     dbg!(&cdn_config);
@@ -243,7 +244,9 @@ fn catalog(config: &Config) -> Result<(), anyhow::Error> {
             continue;
         }
 
-        let fragment_text = cdncache.read_data(&fragment.hash.parse()?)?.read_string()?;
+        let fragment_text = cdncache
+            .read_data(&EncodingKey::parse(&fragment.hash)?)?
+            .read_string()?;
         println!("{}", fragment_text);
         println!();
         let fragment: CatalogFragment = serde_json::from_str(&fragment_text)?;

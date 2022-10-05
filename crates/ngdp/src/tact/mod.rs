@@ -1,5 +1,4 @@
 use std::io::Read;
-use std::str::FromStr;
 use std::{fmt::Debug, io::Write};
 
 use binrw::{BinRead, BinWrite};
@@ -87,6 +86,18 @@ macro_rules! impl_Key {
                 // FIXME: Use const generic split once stable
                 self.0[..9].try_into().unwrap()
             }
+
+            pub fn parse(input: &str) -> Result<Self, hex::FromHexError> {
+                let mut res = [0; 16];
+                hex::decode_to_slice(input, &mut res)?;
+                Ok(Self(res))
+            }
+
+            pub fn parse_rev(input: &str) -> Result<Self, hex::FromHexError> {
+                let mut res = Self::parse(input)?;
+                res.0.reverse();
+                Ok(res)
+            }
         }
 
         impl Debug for $name {
@@ -95,18 +106,6 @@ macro_rules! impl_Key {
                     write!(f, "{:02x}", byte)?;
                 }
                 Ok(())
-            }
-        }
-
-        impl FromStr for $name {
-            type Err = hex::FromHexError;
-
-            fn from_str(s: &str) -> Result<Self, Self::Err> {
-                let mut res = [0; 16];
-                hex::decode_to_slice(s, &mut res)?;
-                // Keys in text form are MSB first, whereas hex::decode is LSB first
-                res.reverse();
-                Ok(Self(res))
             }
         }
     )*};

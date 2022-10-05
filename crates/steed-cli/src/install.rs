@@ -143,11 +143,12 @@ fn install_inner(
 
     let mut cdn = CDNClient::new(cdns.clone(), config.cdn_override.clone());
 
-    let build_config_text = builder.read_config(&cdn, &version.build_config.parse()?)?;
+    let build_config_text =
+        builder.read_config(&cdn, &ContentKey::parse(&version.build_config)?)?;
     let build_config = parse_build_config(&build_config_text)?;
     // dbg!(&build_config);
 
-    let cdn_config_text = builder.read_config(&cdn, &version.cdn_config.parse()?)?;
+    let cdn_config_text = builder.read_config(&cdn, &ContentKey::parse(&version.cdn_config)?)?;
     let cdn_config = parse_cdn_config(&cdn_config_text);
     // dbg!(&cdn_config);
 
