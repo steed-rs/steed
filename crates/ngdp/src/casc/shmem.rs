@@ -133,8 +133,13 @@ impl Shmem {
 
         let block4 = match blocks.get(0) {
             Some(repr::Block::Block4(block)) => block,
-            Some(repr::Block::Block5(_block)) => {
-                panic!("Encountered SHMEM block 5, please launch the game to finish update")
+            Some(repr::Block::Block5(block5)) => {
+                eprintln!("Encountered shmem block 5, not parsing any further");
+                return Ok(Shmem {
+                    data_path: block5.data_path.to_string(),
+                    index_versions: block5.index_versions,
+                    unused_bytes: vec![],
+                });
             }
             val => panic!("unexpected first shmem block: {:?}", val),
         };
