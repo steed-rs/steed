@@ -16,6 +16,33 @@ As of writing (November 22, 2022) the libraries and CLI tools can currently do t
 - Full BLTE encode and decode support
     - Tested against all files in the latest build of WoW, with known encryption keys, or without encryption
 
+## How to use what's here
+First of all you need an up-to-date rust toolchain installed.
+
+Create a file named `config.toml` in the root of the repo, with the following keys:
+```
+# A directory containing a local WoW install. Not actually used by the "install" subcommand
+wow_path = "/path/to//World of Warcraft/"
+
+# A directory containing a checkout of https://github.com/wowdev/TACTKeys
+tactkeys_path = "/path/to/TACTKeys/"
+
+# Path to a listfile. For example https://github.com/wowdev/wow-listfile. Not actually used by the "install" subcommand
+listfile_path = "/path/to/wow-listfile/community-listfile.csv"
+
+# If you want to target a specific CDN or a local mirror, you can specify that here
+# cdn_override = "http://localhost:8080/"
+```
+
+Then run one of the following commands:
+- To install WoW to a local directory: `cargo run --release --bin steed-cli install /path/to/install/wow`
+- To download Battle.net catalogs and write them to stdout: `cargo run --release --bin steed-cli catalog`
+- To run whatever self-test that was last commited: `cargo run --release --bin steed-cli`
+
+***NOTE:***:
+- I haven't tested it for a little while so it might have broken with pre-patch
+- This was developed and tested on Linux, so it might make assumptions that don't hold on Windows/MacOS
+
 ## Future plans
 The following is a list of things I'd like to improve/add in the short term:
 - Clean up the install part of CLI:
