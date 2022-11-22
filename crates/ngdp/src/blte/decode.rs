@@ -43,7 +43,7 @@ pub fn decode_blte(tact_keys: &TactKeys, content: &[u8]) -> Result<Vec<u8>, anyh
             hash, chunk_info.checksum,
             "blte chunk did not match checksum"
         );
-        handle_data_block(&data, tact_keys, index, chunk_info, &mut res)?;
+        handle_data_block(&data, tact_keys, index as u32, chunk_info, &mut res)?;
     }
 
     Ok(res)
@@ -61,7 +61,7 @@ pub fn compute_md5(data: &[u8]) -> [u8; 16] {
 fn handle_data_block(
     data: &[u8],
     tact_keys: &TactKeys,
-    index: usize,
+    index: u32,
     chunk_info: &repr::ChunkInfo,
     out: &mut Vec<u8>,
 ) -> Result<(), anyhow::Error> {
@@ -80,7 +80,36 @@ fn handle_data_block(
     Ok(())
 }
 
+pub fn dbg_zlib_wrapper(data: &[u8]) {
+    let cm = data[0] & 0xf;
+    let cinfo = data[0] >> 4;
+
+    let fcheck = data[1] & 0x1f;
+    let dict = (data[1] >> 5) & 1;
+    let flevel = data[1] >> 6;
+
+    eprintln!(
+        "zlib: {:02x?} - cm: {}, cinfo: {} (window {}), fcheck: {}, dict: {}, flevel: {} ({})",
+        &data[..2],
+        cm,
+        cinfo,
+        1 << (cinfo + 8),
+        fcheck,
+        dict,
+        flevel,
+        match flevel {
+            0 => "fastest",
+            1 => "fast",
+            2 => "default",
+            3 => "slowest",
+            _ => "unknown",
+        }
+    );
+}
+
 fn handle_deflate_block(data: &[u8], chunk_info: &repr::ChunkInfo, out: &mut Vec<u8>) {
+    // dbg_zlib_wrapper(&data[..2]);
+
     let decompressed_size = chunk_info.decompressed_size as usize;
     if decompressed_size > 0 {
         // If we know the output size, use libdeflate
@@ -151,7 +180,7 @@ fn zlib_decompress(
 fn handle_encrypted_block(
     data: &[u8],
     tact_keys: &TactKeys,
-    index: usize,
+    index: u32,
     chunk_info: &repr::ChunkInfo,
     out: &mut Vec<u8>,
 ) -> Result<(), anyhow::Error> {
@@ -169,12 +198,12 @@ fn handle_encrypted_block(
                 let mut full_iv = [0; 8];
                 full_iv[0..4].copy_from_slice(&header.iv);
 
-                #[allow(clippy::needless_range_loop)]
+                let index = index.to_le_bytes();
                 for i in 0..4 {
-                    full_iv[i] ^= ((index >> (i * 8)) & 0xff) as u8;
+                    full_iv[i] ^= index[i];
                 }
 
-                salsa_decrypt(key, full_iv, &mut buf);
+                salsa_crypt(key, full_iv, &mut buf);
             }
             _ => anyhow::bail!("Unhandled encryption mode: {}", header.type_.escape_ascii()),
         }
@@ -216,7 +245,7 @@ fn handle_encrypted_block(
     Ok(())
 }
 
-fn salsa_decrypt(key: [u8; 16], iv: [u8; 8], buf: &mut [u8]) {
+pub(super) fn salsa_crypt(key: [u8; 16], iv: [u8; 8], buf: &mut [u8]) {
     // println!("key: {:02x?}", key);
     // println!("iv: {:02x?}", iv);
     let key = rust_salsa20::Key::Key16(key);
@@ -226,36 +255,48 @@ fn salsa_decrypt(key: [u8; 16], iv: [u8; 8], buf: &mut [u8]) {
     // println!("dec: {:02x?}", buf);
 }
 
-mod repr {
-    use binrw::BinRead;
+pub(super) mod repr {
+    use binrw::{BinRead, BinWrite};
 
     use crate::binrw_ext::u24;
 
-    #[derive(BinRead, Debug)]
-    #[br(big, magic = b"BLTE")]
+    #[derive(BinRead, BinWrite, Debug)]
+    #[brw(big, magic = b"BLTE")]
     pub struct BLTEHeader {
         pub header_size: u32,
 
         #[br(if(header_size > 0))]
+        #[bw(if(*header_size > 0))]
         pub flags: Option<u8>,
 
         #[br(if(header_size > 0))]
+        #[bw(if(*header_size > 0))]
         pub chunk_count: Option<u24>,
 
         #[br(count = chunk_count.unwrap_or(u24::ZERO).get())]
         pub chunks: Vec<ChunkInfo>,
     }
 
-    #[derive(BinRead, Clone, Debug)]
-    #[br(big)]
+    #[derive(BinRead, BinWrite, Clone)]
+    #[brw(big)]
     pub struct ChunkInfo {
         pub compressed_size: u32,
         pub decompressed_size: u32,
         pub checksum: [u8; 16],
     }
 
-    #[derive(BinRead)]
-    #[br(big)]
+    impl std::fmt::Debug for ChunkInfo {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            f.debug_struct("ChunkInfo")
+                .field("compressed_size", &self.compressed_size)
+                .field("decompressed_size", &self.decompressed_size)
+                .field("checksum", &format_args!("{:02X?}", &self.checksum))
+                .finish()
+        }
+    }
+
+    #[derive(BinRead, BinWrite)]
+    #[brw(big)]
     pub struct EncryptHeader {
         pub key_name_length: u8,
         pub key_name: [u8; 8],

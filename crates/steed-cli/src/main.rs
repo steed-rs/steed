@@ -122,23 +122,23 @@ fn do_stuff(config: &Config) -> Result<(), anyhow::Error> {
         .collect();
     files.sort();
 
-    // files = vec!["world/expansion07/doodads/nazjatar/8nzj_waterwall_custom_01.m2"];
+    // files = vec!["character/broken/female/brokenfemale0062-00.anim"];
 
     files
         .into_iter()
         .filter_map(|f| {
-            println!("Loading file: {}. ", f);
+            println!("Loading file: {}", f);
             match state.read_file(f) {
                 Ok(data) => Some(data),
                 Err(e) => {
-                    println!("Error loading file: {}, skipping...", e);
+                    println!("Error loading file: {} - skipping...", e);
                     None
                 }
             }
         })
         // .take(30)
         .for_each(|data| {
-            if data[0..4] == [0, 0, 0, 0] {
+            if data[0..data.len().min(4)] == [0, 0, 0, 0] {
                 println!("File looks still encrypted, skipping...");
                 return;
             }

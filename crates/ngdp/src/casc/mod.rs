@@ -1,5 +1,5 @@
 use crate::{
-    blte::decode_blte,
+    blte::{decode_blte, encode_blte, espec::ESpec},
     casc::shmem::Shmem,
     tact::{
         config::BuildConfig,
@@ -97,6 +97,7 @@ fn read_file(
     data_path: &Path,
     entry: &idx::Entry,
     tact_keys: &TactKeys,
+    espec: Option<&ESpec>,
 ) -> Result<Vec<u8>, anyhow::Error> {
     let data_file = data_path.join(format!("data.{:03}", entry.archive_index));
     let mut buf = vec![0; entry.size as usize];
@@ -105,7 +106,13 @@ fn read_file(
     file.seek(SeekFrom::Start(entry.offset as u64))?;
     file.read_exact(&mut buf)?;
 
-    assert!(buf.len() > FileHeader::SIZE, "data block too small");
+    assert!(
+        buf.len() > FileHeader::SIZE,
+        "data block too small (expected at least {}, got {})\nentry: {:#?}",
+        FileHeader::SIZE,
+        buf.len(),
+        entry
+    );
 
     let header = FileHeader::read(&mut Cursor::new(&buf))?;
     let _key = EncodingKey::from_rev(header.hash);
@@ -126,7 +133,92 @@ fn read_file(
 
     let data = &buf[FileHeader::SIZE..header.size as usize];
     assert!(!data.is_empty());
-    decode_blte(tact_keys, data)
+    let res = decode_blte(tact_keys, data)?;
+    if let Some(espec) = espec {
+        match encode_blte(tact_keys, espec, &res) {
+            Ok(recoded) => {
+                if recoded != data {
+                    dbg!(&_key);
+                    dbg!(espec);
+                    eprintln!(
+                        "recoded: {}",
+                        hex::encode(&recoded[..recoded.len().min(80)])
+                    );
+                    eprintln!("   data: {}", hex::encode(&data[..data.len().min(80)]));
+                    dbg_bin_compare(&recoded, data).unwrap();
+                    eprintln!("    src: {}", hex::encode(&res[..res.len().min(80)]));
+                    panic!();
+                }
+            }
+            Err(e) => match e {
+                crate::blte::EncodeError::MissingEncryptionKey(key) => {
+                    eprintln!("BLTE encode failed - missing encryption key: {:02x?}", key);
+                }
+                _ => {
+                    dbg!(espec);
+                    panic!("BLTE encode failed: {}", e);
+                }
+            },
+        }
+    }
+    Ok(res)
+}
+
+fn dbg_bin_compare(a: &[u8], b: &[u8]) -> Result<(), anyhow::Error> {
+    use std::fmt::Write;
+    eprintln!("a.len() = {}, b.len() = {}", a.len(), b.len());
+
+    let max_len = a.len().max(b.len());
+
+    let mut out_a = String::new();
+    let mut out_b = String::new();
+
+    let mut stride = 0;
+    for i in 0..max_len {
+        match (a.get(i), b.get(i)) {
+            (Some(va), Some(vb)) => {
+                if va == vb {
+                    stride += 1;
+                } else {
+                    if stride > 0 {
+                        write!(out_a, "[{} eq]", stride)?;
+                        write!(out_b, "[{} eq]", stride)?;
+                        stride = 0;
+                    }
+
+                    write!(out_a, "{:02x}", va)?;
+                    write!(out_b, "{:02x}", vb)?;
+                }
+            }
+            (Some(va), None) => {
+                if stride > 0 {
+                    write!(out_a, "[{} eq]", stride)?;
+                    write!(out_b, "[{} eq]", stride)?;
+                    stride = 0;
+                }
+                write!(out_a, "{:02x}", va)?
+            }
+            (None, Some(vb)) => {
+                if stride > 0 {
+                    write!(out_a, "[{} eq]", stride)?;
+                    write!(out_b, "[{} eq]", stride)?;
+                    stride = 0;
+                }
+                write!(out_b, "{:02x}", vb)?
+            }
+            (None, None) => panic!("unexpected state"),
+        }
+    }
+
+    if stride > 0 {
+        write!(out_a, "[{} eq]", stride)?;
+        write!(out_b, "[{} eq]", stride)?;
+    }
+
+    eprintln!("{}", out_a);
+    eprintln!("{}", out_b);
+
+    Ok(())
 }
 
 pub struct CASC {
@@ -173,7 +265,7 @@ impl CASC {
                 .as_ref()
                 .expect("encoded hash for encoding file not found, can't progress");
             let entry = indexes.lookup(&decoded_encoding_hashsize.hash).unwrap();
-            let file = read_file(&data_path, entry, &tact_keys)?;
+            let file = read_file(&data_path, entry, &tact_keys, None)?;
             parse_encoding(&file)?
         };
 
@@ -195,6 +287,10 @@ impl CASC {
             .indexes
             .lookup(ekey)
             .ok_or_else(|| anyhow!("couldn't find entry for ekey. ekey = {:?}", ekey))?;
-        read_file(&self.data_path, entry, &self.tact_keys)
+        let espec = self
+            .encoding
+            .lookup_espec(ekey)
+            .ok_or_else(|| anyhow!("couldn't find espec for ekey. ekey = {:?}", ekey))?;
+        read_file(&self.data_path, entry, &self.tact_keys, Some(espec))
     }
 }

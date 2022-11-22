@@ -28,14 +28,15 @@ impl Display for ESpec {
         match self {
             ESpec::Raw => write!(f, "n"),
             ESpec::Zip(v) => {
-                if v.level == 9 && v.bits == 15 {
+                if v.level == 9 && v.bits == ZipBits::Bits(15) {
                     write!(f, "z")
-                } else if v.level != 9 && v.bits == 15 {
+                } else if v.level != 9 && v.bits == ZipBits::Bits(15) {
                     write!(f, "z:{}", v.level)
-                } else if v.bits == 0 {
-                    write!(f, "z:{{{},mpq}}", v.level)
                 } else {
-                    write!(f, "z:{{{},{}}}", v.level, v.bits)
+                    match v.bits {
+                        ZipBits::Bits(bits) => write!(f, "z:{{{},{}}}", v.level, bits),
+                        ZipBits::MPQ => write!(f, "z:{{{},mpq}}", v.level),
+                    }
                 }
             }
             ESpec::Encrypted(v) => {
@@ -76,7 +77,13 @@ impl Debug for ESpec {
 #[derive(Clone, Debug)]
 pub struct Zip {
     pub level: u8,
-    pub bits: u8,
+    pub bits: ZipBits,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum ZipBits {
+    Bits(u8),
+    MPQ,
 }
 
 #[derive(Clone)]
@@ -104,23 +111,37 @@ pub struct Blocks {
 
 #[derive(Clone, Debug)]
 pub struct Block {
-    pub size: u64,
-    pub count: Option<u64>,
+    pub size: BlockSize,
     pub inner: ESpec,
+}
+
+#[derive(Clone, Debug)]
+pub enum BlockSize {
+    Chunked { size: u64, count: u64 },
+    ChunkedGreedy { size: u64 },
+    Greedy,
 }
 
 impl Display for Block {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let mut fmt_size = |size: u64| match size {
+            v if v & 0xfffff == 0 => write!(f, "{}M", v >> 20),
+            v if v & 0x3ff == 0 => write!(f, "{}K", v >> 10),
+            v => write!(f, "{}", v),
+        };
         match self.size {
-            v if v & 0xfffff == 0 => write!(f, "{}M", v >> 20)?,
-            v if v & 0x3ff == 0 => write!(f, "{}K", v >> 10)?,
-            v => write!(f, "{}", v)?,
-        };
-        match self.count {
-            Some(1) => {}
-            Some(v) => write!(f, "*{}", v)?,
-            None => write!(f, "*")?,
-        };
+            BlockSize::Chunked { size, count } => {
+                fmt_size(size)?;
+                if count > 1 {
+                    write!(f, "*{}", count)?;
+                }
+            }
+            BlockSize::ChunkedGreedy { size } => {
+                fmt_size(size)?;
+                write!(f, "*")?;
+            }
+            BlockSize::Greedy => write!(f, "*")?,
+        }
         write!(f, "={}", self.inner)
     }
 }
@@ -165,16 +186,20 @@ fn parse_zip(input: &str) -> IResult<Zip> {
             alt((
                 delimited(
                     char('{'),
-                    separated_pair(u8, char(','), alt((u8, value(0, tag("mpq"))))),
+                    separated_pair(
+                        u8,
+                        char(','),
+                        alt((map(u8, ZipBits::Bits), value(ZipBits::MPQ, tag("mpq")))),
+                    ),
                     char('}'),
                 ),
-                map(u8, |level| (level, 15)),
+                map(u8, |level| (level, ZipBits::Bits(15))),
             )),
         )),
     )(input)
     .map(|(r, v)| {
         (r, {
-            let (level, bits) = v.unwrap_or((9, 15));
+            let (level, bits) = v.unwrap_or((9, ZipBits::Bits(15)));
             Zip { level, bits }
         })
     })
@@ -215,33 +240,34 @@ fn parse_blocks(input: &str) -> IResult<Blocks> {
             },
         )(input)
     }
-    fn block_size_spec(input: &str) -> IResult<(u64, u64)> {
+    fn block_size_spec(input: &str) -> IResult<BlockSize> {
         map(
             tuple((block_size, opt(preceded(char('*'), u64)))),
-            |(size, count)| (size, count.unwrap_or(1)),
+            |(size, count)| BlockSize::Chunked {
+                size,
+                count: count.unwrap_or(1),
+            },
         )(input)
     }
     fn block_subchunk(input: &str) -> IResult<Block> {
         map(
             separated_pair(block_size_spec, char('='), parse_espec),
-            |((size, count), inner)| Block {
-                size,
-                count: Some(count),
-                inner,
-            },
+            |(size, inner)| Block { size, inner },
         )(input)
     }
-    fn final_size_spec(input: &str) -> IResult<(u64, Option<u64>)> {
+    fn final_size_spec(input: &str) -> IResult<BlockSize> {
         alt((
-            map(char('*'), |_| (0, None)),
-            map(terminated(block_size, char('*')), |size| (size, None)),
-            map(block_size_spec, |(size, count)| (size, Some(count))),
+            value(BlockSize::Greedy, char('*')),
+            map(terminated(block_size, char('*')), |size| {
+                BlockSize::ChunkedGreedy { size }
+            }),
+            block_size_spec,
         ))(input)
     }
     fn final_subchunk(input: &str) -> IResult<Block> {
         map(
             separated_pair(final_size_spec, char('='), parse_espec),
-            |((size, count), inner)| Block { size, count, inner },
+            |(size, inner)| Block { size, inner },
         )(input)
     }
     map(

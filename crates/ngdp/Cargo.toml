@@ -13,7 +13,7 @@ binrw = "0.10.0"
 bitflags = "1.2"
 bitvec = "1.0.0"
 byteorder = "1.4.3"
-flate2 = "1.0.22"
+flate2 = { version = "1.0.22", features = ["zlib"] }
 hex = "0.4.3"
 libdeflate-sys = "0.11.0"
 lookup3 = { path = "../lookup3" }

@@ -22,6 +22,14 @@ defer_fmt!(u24: get => Debug, Display, LowerHex, UpperHex);
 impl u24 {
     pub const ZERO: u24 = u24([0; 3]);
 
+    pub fn new(val: u32) -> Self {
+        Self([
+            ((val >> 16) & 0xff) as u8,
+            ((val >> 8) & 0xff) as u8,
+            (val & 0xff) as u8,
+        ])
+    }
+
     pub fn get(&self) -> u32 {
         BE::read_u24(&self.0)
     }
