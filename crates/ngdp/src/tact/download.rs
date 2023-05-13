@@ -4,7 +4,7 @@ use binrw::BinRead;
 use bitvec::{prelude::Msb0, vec::BitVec};
 
 use super::{keys::TactKeys, EncodingKey};
-use crate::blte::decode_blte;
+use crate::{blte::decode_blte, util::hexdump};
 
 #[derive(Debug)]
 pub struct DownloadManifest {
@@ -42,6 +42,7 @@ pub fn parse_download_manifest(
     content: &[u8],
 ) -> Result<DownloadManifest, anyhow::Error> {
     let content = decode_blte(tact_keys, content)?;
+    hexdump(&content, 0, 256);
 
     let res = repr::DownloadManifest::read(&mut Cursor::new(content))?;
     assert_eq!(16, res.hash_size);
@@ -110,7 +111,6 @@ mod repr {
     #[derive(BinRead)]
     #[br(big, magic = b"DL")]
     pub struct DownloadManifest {
-        pub signature: [u8; 2],
         pub version: u8,
         pub hash_size: u8,
         pub has_checksum_in_entry: u8,
@@ -126,10 +126,16 @@ mod repr {
         #[br(if(version >= 3))]
         pub _pad: Option<[u8; 3]>,
 
-        #[br(count = entry_count)]
+        #[br(args{
+            count: entry_count as usize,
+            inner: (version, hash_size, has_checksum_in_entry, number_of_flag_bytes)
+        })]
         pub entries: Vec<Entry>,
 
-        #[br(count = tag_count)]
+        #[br(args{
+            count: tag_count as usize,
+            inner: (entry_count,)
+        })]
         pub tags: Vec<Tag>,
     }
 
@@ -149,7 +155,7 @@ mod repr {
         #[br(if(has_checksum_in_entry != 0))]
         pub checksum: Option<u32>,
 
-        #[br(if(version >= 2), count = number_of_flag_bytes.unwrap())]
+        #[br(if(version >= 2), count = number_of_flag_bytes.unwrap_or(0))]
         pub flags: Vec<u8>,
     }
 
