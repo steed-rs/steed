@@ -24,7 +24,7 @@ impl Encoding {
         let mut prev_first_key = &self.cekey_page_headers[0].first_key;
         for (i, page_header) in self.cekey_page_headers.iter().enumerate().skip(1) {
             let next_first_key = &page_header.first_key;
-            if ckey >= prev_first_key && ckey <= next_first_key {
+            if ckey >= prev_first_key && ckey < next_first_key {
                 break;
             } else {
                 page_idx = i;
