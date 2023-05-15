@@ -77,7 +77,7 @@ fn do_stuff(config: &Config) -> Result<(), anyhow::Error> {
     let cdncache = CDNClient::new(cdns.clone(), config.cdn_override.clone());
 
     let build_config_text = cdncache
-        .read_config(&ContentKey::parse_rev(&version.build_config)?)?
+        .read_config(&ContentKey::parse(&version.build_config)?)?
         .read_string()?;
     let build_config = parse_build_config(&build_config_text)?;
     dbg!(&build_config);

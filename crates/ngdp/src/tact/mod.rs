@@ -92,12 +92,6 @@ macro_rules! impl_Key {
                 hex::decode_to_slice(input, &mut res)?;
                 Ok(Self(res))
             }
-
-            pub fn parse_rev(input: &str) -> Result<Self, hex::FromHexError> {
-                let mut res = Self::parse(input)?;
-                res.0.reverse();
-                Ok(res)
-            }
         }
 
         impl Debug for $name {
