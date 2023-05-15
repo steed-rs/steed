@@ -1,4 +1,4 @@
-use std::{borrow::Cow, fmt::Write};
+use std::{borrow::Cow, fmt::Write, print, println, unreachable};
 
 fn upper_backslash(c: u8) -> u8 {
     if c == b'/' {
@@ -67,4 +67,57 @@ pub fn asciiz(val: &[u8]) -> Cow<str> {
     let first_zero = val.iter().position(|&b| b == 0).unwrap_or(val.len());
     let val = &val[..first_zero];
     String::from_utf8_lossy(val)
+}
+
+pub fn hexdump(val: &[u8], start: usize, end: usize) {
+    const CHUNK_SIZE: usize = 16;
+
+    let mut skipping_zeroes = false;
+    let mut zeroes_start = 0;
+    for (chunk_idx, chunk) in val[start..end].chunks(CHUNK_SIZE).enumerate() {
+        let chunk_start = start + CHUNK_SIZE * chunk_idx;
+
+        if chunk.iter().all(|b| *b == 0) {
+            if !skipping_zeroes {
+                skipping_zeroes = true;
+                zeroes_start = chunk_start;
+            }
+            continue;
+        }
+
+        if skipping_zeroes {
+            println!(
+                "{:08x} => {:08x} was zero ({} bytes)",
+                zeroes_start,
+                chunk_start,
+                chunk_start - zeroes_start
+            );
+            skipping_zeroes = false;
+        }
+
+        print!("{:08x}: ", chunk_start);
+
+        for word in chunk.chunks(2) {
+            match word {
+                [a, b] => print!("{:02x}{:02x} ", a, b),
+                [a] => print!("{:02x}   ", a),
+                _ => unreachable!(),
+            }
+        }
+
+        let bytes_left = CHUNK_SIZE - chunk.len();
+        for _ in 0..(bytes_left + bytes_left / 2) {
+            print!(" ");
+        }
+
+        for byte in chunk {
+            if byte.is_ascii_graphic() {
+                print!("{}", *byte as char);
+            } else {
+                print!(".");
+            }
+        }
+
+        println!();
+    }
 }
