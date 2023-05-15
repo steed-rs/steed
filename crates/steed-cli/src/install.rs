@@ -17,7 +17,7 @@ use ngdp::{
         keys::TactKeys,
         ContentKey, EncodingKey,
     },
-    util::format_hex_bytes,
+    util::format_hex_bytes_le,
 };
 use ribbit::{cdns, versions, Server};
 use serde::{Deserialize, Serialize};
@@ -552,7 +552,7 @@ impl CASCBuilder {
     }
 
     pub fn read_config(&self, cdn: &CDNClient, key: &ContentKey) -> Result<String, anyhow::Error> {
-        let formatted = format_hex_bytes(&key.to_inner());
+        let formatted = format_hex_bytes_le(&key.to_inner());
         let path = self
             .root
             .join("Data")

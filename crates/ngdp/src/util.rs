@@ -47,9 +47,17 @@ pub fn parse_hex_bytes<const N: usize>(s: &str) -> Option<[u8; N]> {
     Some(res)
 }
 
-pub fn format_hex_bytes<const N: usize>(val: &[u8; N]) -> String {
+pub fn format_hex_bytes_be<const N: usize>(val: &[u8; N]) -> String {
     let mut res = String::with_capacity(N * 2);
     for byte in val.iter().rev() {
+        res.write_fmt(format_args!("{:02x}", byte)).unwrap();
+    }
+    res
+}
+
+pub fn format_hex_bytes_le<const N: usize>(val: &[u8; N]) -> String {
+    let mut res = String::with_capacity(N * 2);
+    for byte in val.iter() {
         res.write_fmt(format_args!("{:02x}", byte)).unwrap();
     }
     res

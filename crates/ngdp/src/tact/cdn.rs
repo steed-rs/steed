@@ -11,7 +11,7 @@ use reqwest::{
 };
 use running_average::RealTimeRunningAverage;
 
-use crate::util::format_hex_bytes;
+use crate::util::format_hex_bytes_le;
 
 use super::{ContentKey, EncodingKey};
 
@@ -148,7 +148,7 @@ impl CDNClient {
     }
 
     fn config_path(&self, key: &ContentKey) -> PathBuf {
-        let key = format_hex_bytes(&key.to_inner());
+        let key = format_hex_bytes_le(&key.to_inner());
         PathBuf::from(&self.cdn_path)
             .join("config")
             .join(&key[0..2])
@@ -157,7 +157,7 @@ impl CDNClient {
     }
 
     fn data_path(&self, key: &EncodingKey) -> PathBuf {
-        let key = format_hex_bytes(&key.to_inner());
+        let key = format_hex_bytes_le(&key.to_inner());
         PathBuf::from(&self.cdn_path)
             .join("data")
             .join(&key[0..2])
@@ -166,7 +166,7 @@ impl CDNClient {
     }
 
     fn index_path(&self, key: &EncodingKey) -> PathBuf {
-        let key = format_hex_bytes(&key.to_inner());
+        let key = format_hex_bytes_le(&key.to_inner());
         PathBuf::from(&self.cdn_path)
             .join("data")
             .join(&key[0..2])
