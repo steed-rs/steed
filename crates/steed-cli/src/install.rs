@@ -26,6 +26,7 @@ use std::{
     fs::File,
     io::{Cursor, Read, Seek, SeekFrom},
     path::{Path, PathBuf},
+    println,
     time::{Duration, Instant},
 };
 
@@ -116,8 +117,6 @@ fn install_inner(
     builder: &mut CASCBuilder,
     state: &mut InstallState,
 ) -> Result<(), anyhow::Error> {
-    let mb = MultiProgress::new();
-
     // TODO: We're being really naive with memory, keeping this ~256M buffer life this long
     let mut buf: Vec<u8> = vec![];
 
@@ -173,7 +172,7 @@ fn install_inner(
         parse_encoding(&encoding_data).context("parsing encoding")?
     };
 
-    let bar = mb.add(ProgressBar::new(cdn_config.archives.len() as u64));
+    let bar = ProgressBar::new(cdn_config.archives.len() as u64);
     bar.set_style(
         ProgressStyle::with_template(COUNT_BAR_STYLE)
             .unwrap()
@@ -203,6 +202,7 @@ fn install_inner(
     }
     bar.finish();
 
+    println!("Fetching install manifest...");
     let install_manifest_hs = build_config
         .install
         .as_ref()
@@ -220,6 +220,8 @@ fn install_inner(
         .map(|f| f.size as u64)
         .sum();
 
+    println!("Installing base files...");
+    let mb = MultiProgress::new();
     let bar = mb.add(ProgressBar::new(total_bytes));
     bar.set_style(
         ProgressStyle::with_template(MAIN_BAR_STYLE)
@@ -275,6 +277,7 @@ fn install_inner(
     }
     bar.finish();
 
+    println!("Fetching download manifest...");
     let download_manifest_hs = build_config
         .download
         .ok_or_else(|| anyhow!("build config had no download key"))?
@@ -318,6 +321,7 @@ fn install_inner(
     });
     // END: Download plan
 
+    let mb = MultiProgress::new();
     let bar = mb.add(ProgressBar::new(total_bytes));
     bar.set_style(
         ProgressStyle::with_template(MAIN_BAR_STYLE)
