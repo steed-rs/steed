@@ -95,7 +95,7 @@ pub fn install(config: &Config) -> Result<(), anyhow::Error> {
 
             println!("Saving installation progress...");
             let state_data = bincode::serialize(&state)?;
-            std::fs::write(dir.join(INSTALL_STATE_NAME), &state_data)?;
+            std::fs::write(dir.join(INSTALL_STATE_NAME), state_data)?;
 
             Err(e)
         }
@@ -332,7 +332,7 @@ fn install_inner(
 
             let slot = builder
                 .shmem
-                .reserve_bytes(total_size as usize)
+                .reserve_bytes(total_size)
                 .ok_or_else(|| anyhow!("no more free space in shmem"))?;
 
             if slot.data_file_missing == 1 {
@@ -616,7 +616,7 @@ impl CASCBuilder {
                 .parent()
                 .ok_or_else(|| anyhow::anyhow!("read path had no parent directory"))?;
             std::fs::create_dir_all(parent)?;
-            std::fs::write(&path, &data)?;
+            std::fs::write(path, &data)?;
             Ok(())
         }();
 

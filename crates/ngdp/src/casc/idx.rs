@@ -91,7 +91,7 @@ impl Index {
             header_hash_size: HEADER_HASH_SIZE as u32,
             header_hash: 0xdeadbeef,
             unk0: 7,
-            bucket_index: self.index as u8,
+            bucket_index: self.index,
             unk1: 0,
             entry_size_bytes: 4,
             entry_offset_bytes: 5,

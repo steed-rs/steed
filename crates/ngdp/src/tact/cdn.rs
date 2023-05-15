@@ -109,8 +109,7 @@ impl CDNClient {
         let mut last_error = anyhow::anyhow!("No CDNs defined");
         for server in self.servers() {
             let url = self.cdn_url(server, path);
-            let resp = self.client.get(&url).send();
-            dbg!(&resp);
+            let resp = self.client.get(url).send();
             match resp {
                 Ok(resp) if resp.status().is_success() => return Ok(CDNReader::new(resp)),
                 _ => {
@@ -135,7 +134,7 @@ impl CDNClient {
             let url = self.cdn_url(server, path);
             let resp = self
                 .client
-                .get(&url)
+                .get(url)
                 .header(RANGE, format!("bytes={}-{}", offset, offset + size))
                 .send()?;
             if resp.status().is_success() {

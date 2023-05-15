@@ -183,11 +183,7 @@ fn process_zip(v: &Zip, input: &[u8], buf: &mut Vec<u8>) {
     loop {
         let total_in = compress.total_in();
         let status = compress
-            .compress_vec(
-                &input[total_in as usize as usize..],
-                buf,
-                FlushCompress::Finish,
-            )
+            .compress_vec(&input[total_in as usize..], buf, FlushCompress::Finish)
             .expect("compress operation failed unexpectedly");
 
         match status {
